@@ -1,0 +1,6 @@
+{
+  "name": "OBS Dok Studio",
+  "description": "Professional mobile broadcasting and screen recording studio with multi-source compositor, dynamic quality discovery, audio mixer, and RTMP streaming.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
