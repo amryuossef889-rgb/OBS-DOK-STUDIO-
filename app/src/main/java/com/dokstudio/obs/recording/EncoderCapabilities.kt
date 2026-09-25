@@ -1,0 +1,4 @@
+package com.dokstudio.obs.recording
+import android.media.MediaCodecList
+data class QualityProfile(val name:String,val width:Int,val height:Int,val fps:Int,val bitrate:Int)
+object EncoderCapabilities{fun supported(p:QualityProfile):Boolean=MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter{it.isEncoder&&it.supportedTypes.any{t->t.equals("video/avc",true)}}.any{try{val v=it.getCapabilitiesForType("video/avc").videoCapabilities;v.isSizeSupported(p.width,p.height)&&v.areSizeAndRateSupported(p.width,p.height,p.fps.toDouble())}catch(_:Throwable){false}};fun profiles()=listOf(QualityProfile("Balanced",1280,720,30,6000000),QualityProfile("High Quality",1920,1080,30,10000000),QualityProfile("High FPS",1920,1080,60,14000000)).map{it to supported(it)}}

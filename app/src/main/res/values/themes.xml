@@ -1,5 +1,1 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-
-    <style name="Theme.MyApplication" parent="android:Theme.DeviceDefault.NoActionBar" />
-</resources>
+<resources><style name="Theme.OBSDokStudio" parent="android:style/Theme.Material.NoActionBar"><item name="android:fontFamily">sans</item><item name="android:windowLightStatusBar">false</item><item name="android:statusBarColor">#101114</item><item name="android:navigationBarColor">#101114</item></style></resources>
