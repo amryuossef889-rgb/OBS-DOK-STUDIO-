@@ -37,18 +37,16 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         viewModelScope.launch {
-            if (scenes.first().isEmpty()) {
-                application.repository.save(
-                    SceneEntity(
-                        UUID.randomUUID().toString(),
-                        "Main Scene",
-                        0,
-                        System.currentTimeMillis(),
-                        System.currentTimeMillis(),
-                    ),
-                )
+            val current = scenes.first()
+            if (current.isEmpty()) {
+                val sceneId = UUID.randomUUID().toString()
+                val now = System.currentTimeMillis()
+                application.repository.save(SceneEntity(sceneId, "Main Scene", 0, now, now))
+                application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Screen", zIndex = 0))
+                selectedScene.value = sceneId
+            } else {
+                selectedScene.value = current.first().id
             }
-            selectedScene.value = scenes.first().firstOrNull()?.id
         }
     }
 
@@ -66,15 +64,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
     fun addScene() {
         viewModelScope.launch {
             val n = scenes.value.size
-            application.repository.save(
-                SceneEntity(
-                    UUID.randomUUID().toString(),
-                    "Scene " + (n + 1),
-                    n,
-                    System.currentTimeMillis(),
-                    System.currentTimeMillis(),
-                ),
-            )
+            val sceneId = UUID.randomUUID().toString()
+            val now = System.currentTimeMillis()
+            application.repository.save(SceneEntity(sceneId, "Scene " + (n + 1), n, now, now))
+            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Screen", zIndex = 0))
         }
     }
 
