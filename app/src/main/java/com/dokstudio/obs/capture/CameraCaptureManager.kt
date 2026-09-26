@@ -1,12 +1,66 @@
 package com.dokstudio.obs.capture
+
 import android.content.Context
-import android.graphics.SurfaceTexture
+import android.util.Size
 import android.view.Surface
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
-class CameraCaptureManager(private val c:Context,private val owner:LifecycleOwner){private var s:Surface?=null
- fun start(target:SurfaceTexture,w:Int,h:Int,onError:(Throwable)->Unit){s=Surface(target);val f=ProcessCameraProvider.getInstance(c);f.addListener({try{val p=f.get();p.unbindAll();val preview=Preview.Builder().setTargetResolution(android.util.Size(w,h)).build();preview.setSurfaceProvider{q->q.provideSurface(s!!,ContextCompat.getMainExecutor(c)){} };p.bindToLifecycle(owner,CameraSelector.DEFAULT_BACK_CAMERA,preview)}catch(t:Throwable){onError(t)}},ContextCompat.getMainExecutor(c))}
- fun stop(){try{ProcessCameraProvider.getInstance(c).get().unbindAll()}catch(_:Throwable){};s?.release();s=null}
+
+class CameraCaptureManager(
+    private val context: Context,
+    private val owner: LifecycleOwner,
+) {
+    private var provider: ProcessCameraProvider? = null
+    private var targetSurface: Surface? = null
+
+    fun start(
+        target: Surface,
+        width: Int,
+        height: Int,
+        onError: (Throwable) -> Unit,
+    ) {
+        stop()
+        targetSurface = target
+        val future = ProcessCameraProvider.getInstance(context)
+        future.addListener(
+            {
+                try {
+                    val cameraProvider = future.get()
+                    provider = cameraProvider
+                    val preview = Preview.Builder()
+                        .setTargetResolution(Size(width, height))
+                        .build()
+                    preview.setSurfaceProvider { request ->
+                        val surface = targetSurface
+                        if (surface == null || !surface.isValid) {
+                            request.willNotProvideSurface()
+                        } else {
+                            request.provideSurface(
+                                surface,
+                                ContextCompat.getMainExecutor(context),
+                            ) { }
+                        }
+                    }
+                    cameraProvider.unbindAll()
+                    cameraProvider.bindToLifecycle(
+                        owner,
+                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        preview,
+                    )
+                } catch (t: Throwable) {
+                    onError(t)
+                }
+            },
+            ContextCompat.getMainExecutor(context),
+        )
+    }
+
+    fun stop() {
+        runCatching { provider?.unbindAll() }
+        provider = null
+        targetSurface = null
+    }
 }
