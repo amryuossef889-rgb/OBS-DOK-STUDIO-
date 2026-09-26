@@ -150,6 +150,26 @@ class SceneCompositor {
         }
     }
 
+    fun setFrameStyle(
+        source: InputSource,
+        shape: FrameShape,
+        borderWidth: Float,
+        cornerRadius: Float,
+    ) {
+        if (!::handler.isInitialized || released.get()) return
+        handler.post {
+            source.frameEnabled = true
+            source.frameShape = when (shape) {
+                FrameShape.RECTANGLE -> 0
+                FrameShape.ROUNDED -> 1
+                FrameShape.CIRCLE -> 2
+            }
+            source.borderWidth = borderWidth.coerceIn(0f, 0.12f)
+            source.cornerRadius = cornerRadius.coerceIn(0f, 0.49f)
+            render()
+        }
+    }
+
     private fun initializeEgl(surface: Surface) {
         display = EGL14.eglGetDisplay(EGL14.EGL_DEFAULT_DISPLAY)
         check(display != EGL14.EGL_NO_DISPLAY) { "EGL display unavailable" }
