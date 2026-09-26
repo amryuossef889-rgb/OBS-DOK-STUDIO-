@@ -171,21 +171,24 @@ class MainActivity : ComponentActivity() {
                     vm.engine.markRecording()
                 },
                     onError = {
-                        stopForegroundCaptureService()
+                        val reason = it.message ?: "Recording failed"
+                        notifyRecordingError(reason)
                         vm.engine.idle()
-                        onError(it.message ?: "Recording failed")
+                        onError(reason)
                     },
                 )
                 } catch (t: Throwable) {
-                    stopForegroundCaptureService()
+                    val reason = t.message ?: "Recording failed"
+                    notifyRecordingError(reason)
                     vm.engine.idle()
-                    onError(t.message ?: "Recording failed")
+                    onError(reason)
                 }
             }
         } catch (t: Throwable) {
-            stopForegroundCaptureService()
+            val reason = t.message ?: "Recording failed"
+            notifyRecordingError(reason)
             vm.engine.idle()
-            onError(t.message ?: "Recording failed")
+            onError(reason)
         }
     }
 
@@ -222,6 +225,14 @@ class MainActivity : ComponentActivity() {
             Intent(this, StudioForegroundService::class.java),
             foregroundServiceConnection,
             BIND_AUTO_CREATE,
+        )
+    }
+
+    private fun notifyRecordingError(reason: String) {
+        startService(
+            Intent(this, StudioForegroundService::class.java)
+                .setAction(StudioForegroundService.ACTION_ERROR)
+                .putExtra(StudioForegroundService.EXTRA_ERROR, reason),
         )
     }
 
