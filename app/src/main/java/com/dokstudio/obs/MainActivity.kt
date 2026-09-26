@@ -28,6 +28,8 @@ import com.dokstudio.obs.permissions.PermissionCoordinator
 import com.dokstudio.obs.recording.EncoderCapabilities
 import com.dokstudio.obs.recording.QualityProfile
 import com.dokstudio.obs.recording.RecordingController
+import com.dokstudio.obs.capture.CameraCaptureManager
+import com.dokstudio.obs.compositor.SceneCompositor
 import com.dokstudio.obs.service.StudioForegroundService
 import com.dokstudio.obs.data.RecordingEntity
 import java.util.UUID
@@ -51,6 +53,7 @@ class MainActivity : ComponentActivity() {
         }
 
     private var cameraEnabled by mutableStateOf(false)
+    private var cameraLens by mutableStateOf(CameraCaptureManager.Lens.BACK)
     private var recordingStartedAt = 0L
 
     private val projectionLauncher =
@@ -88,6 +91,9 @@ class MainActivity : ComponentActivity() {
 
     fun isCameraEnabled(): Boolean = cameraEnabled
 
+    fun setCameraLens(lens: CameraCaptureManager.Lens) { cameraLens = lens }
+    fun cameraLens(): CameraCaptureManager.Lens = cameraLens
+
     fun setPreviewSurface(surface: android.view.Surface?) {
         recording.setPreviewSurface(surface)
     }
@@ -95,6 +101,12 @@ class MainActivity : ComponentActivity() {
     fun startRecording(
         vm: com.dokstudio.obs.ui.StudioViewModel,
         profile: QualityProfile,
+        cameraFrameShape: SceneCompositor.FrameShape,
+        cameraScale: Float,
+        cameraX: Float,
+        cameraY: Float,
+        cameraCornerRadius: Float,
+        cameraBorderWidth: Float,
         onError: (String) -> Unit,
     ) {
         val code = projectionResult
@@ -125,6 +137,13 @@ class MainActivity : ComponentActivity() {
                 fps = profile.fps,
                 bitrate = profile.bitrate,
                 includeCamera = cameraEnabled,
+                cameraLens = cameraLens,
+                cameraScale = cameraScale,
+                cameraX = cameraX,
+                cameraY = cameraY,
+                cameraFrameShape = cameraFrameShape,
+                cameraCornerRadius = cameraCornerRadius,
+                cameraBorderWidth = cameraBorderWidth,
                 onStarted = {
                     vm.engine.ready()
                     vm.engine.markRecording()
@@ -169,64 +188,53 @@ private fun StudioScreen(
     vm: com.dokstudio.obs.ui.StudioViewModel = viewModel(),
 ) {
     val scenes by vm.scenes.collectAsState()
+    val sources by vm.selectedSources.collectAsState()
+    val recordings by vm.recordings.collectAsState()
     val studio by vm.engine.studio.collectAsState()
     var error by remember { mutableStateOf<String?>(null) }
     var showQualityDialog by remember { mutableStateOf(false) }
+    var showCameraMenu by remember { mutableStateOf(false) }
+    var showFrameMenu by remember { mutableStateOf(false) }
+    var cameraScale by remember { mutableFloatStateOf(0.32f) }
+    var cameraX by remember { mutableFloatStateOf(0.62f) }
+    var cameraY by remember { mutableFloatStateOf(-0.62f) }
+    var cornerRadius by remember { mutableFloatStateOf(0.14f) }
+    var borderWidth by remember { mutableFloatStateOf(0.018f) }
+    var frameShape by remember { mutableStateOf(SceneCompositor.FrameShape.ROUNDED) }
     val profiles = remember { EncoderCapabilities.profiles() }
     var selectedProfile by remember {
         mutableStateOf(
-            profiles.firstOrNull { it.second }?.first
+            profiles.firstOrNull { it.first.fps == 60 && it.second }?.first
+                ?: profiles.firstOrNull { it.second }?.first
                 ?: QualityProfile("Balanced", 1280, 720, 30, 6_000_000),
         )
     }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF101114)).padding(16.dp)) {
-        Text("OBS Dok Studio", color = Color.White, style = MaterialTheme.typography.headlineSmall)
-        Spacer(Modifier.height(12.dp))
-
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF18181B))) {
+        Row(
+            Modifier.fillMaxWidth().background(Color(0xFF202124)).padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("OBS Dok Studio", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.weight(1f))
+            Text(
+                selectedProfile.width.toString() + "×" + selectedProfile.height + " • " +
+                    selectedProfile.fps + " FPS",
+                color = Color.LightGray,
+            )
+            Spacer(Modifier.width(10.dp))
             Button(
                 enabled = studio == StudioState.IDLE,
                 onClick = { error = null; activity.requestCapturePermissions() },
-            ) { Text("Screen Consent") }
-
-            Button(
-                enabled = studio == StudioState.IDLE,
-                onClick = { activity.startRecording(vm, selectedProfile) { error = it } },
-            ) { Text("Record") }
-
-            Button(
-                enabled = studio == StudioState.IDLE,
-                onClick = { showQualityDialog = true },
-            ) { Text("Quality") }
-
+            ) { Text("Start Capture") }
+            Spacer(Modifier.width(8.dp))
             Button(
                 enabled = studio == StudioState.RECORDING,
                 onClick = { activity.stopRecording(vm) },
             ) { Text("Stop") }
         }
 
-        Spacer(Modifier.height(8.dp))
-        Text("State: " + studio, color = Color.White)
-        Text("Selected quality: " + selectedProfile.name, color = Color.White)
-
-        OutlinedButton(
-            enabled = studio == StudioState.IDLE,
-            onClick = { activity.toggleCamera() },
-        ) {
-            Text(if (activity.isCameraEnabled()) "Camera: ON" else "Camera: OFF")
-        }
-
-        error?.let {
-            Spacer(Modifier.height(8.dp))
-            Text(it, color = MaterialTheme.colorScheme.error)
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Box(
-            Modifier.fillMaxWidth().height(260.dp).background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
+        Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(Color.Black)) {
             AndroidView(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
@@ -235,12 +243,7 @@ private fun StudioScreen(
                             override fun surfaceCreated(holder: SurfaceHolder) {
                                 activity.setPreviewSurface(holder.surface)
                             }
-                            override fun surfaceChanged(
-                                holder: SurfaceHolder,
-                                format: Int,
-                                width: Int,
-                                height: Int,
-                            ) {
+                            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
                                 activity.setPreviewSurface(holder.surface)
                             }
                             override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -251,25 +254,199 @@ private fun StudioScreen(
                 },
                 update = {},
             )
-        }
-
-        Spacer(Modifier.height(12.dp))
-        Text("Encoder capabilities", color = Color.White)
-        profiles.forEach { entry ->
-            val profile = entry.first
-            val supported = entry.second
             Text(
-                profile.name + " — " + profile.width + "x" + profile.height + " @ " + profile.fps +
-                    ": " + if (supported) "supported" else "unsupported",
-                color = Color.LightGray,
+                if (studio == StudioState.RECORDING) "● REC" else "PREVIEW",
+                color = if (studio == StudioState.RECORDING) Color.Red else Color.White,
+                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
             )
         }
 
-        Spacer(Modifier.height(12.dp))
-        LazyColumn {
-            items(scenes) { scene ->
-                Text(scene.name, color = Color.White, modifier = Modifier.padding(8.dp))
+        Row(
+            Modifier.fillMaxWidth().height(225.dp).padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Card(Modifier.weight(1f).fillMaxHeight()) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Scenes", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(onClick = vm::addScene) { Text("+") }
+                    }
+                    LazyColumn {
+                        items(scenes) { scene ->
+                            Text(scene.name, color = Color.White, modifier = Modifier.padding(7.dp))
+                        }
+                    }
+                }
             }
+
+            Card(Modifier.weight(1.2f).fillMaxHeight()) {
+                Column(Modifier.padding(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Sources", style = MaterialTheme.typography.titleMedium)
+                        Spacer(Modifier.weight(1f))
+                        TextButton(
+                            enabled = vm.selectedScene.value != null,
+                            onClick = {
+                                vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") }
+                            },
+                        ) { Text("+ Screen") }
+                    }
+                    if (sources.isEmpty()) {
+                        Text("No sources in selected scene", color = Color.Gray)
+                    } else {
+                        LazyColumn {
+                            items(sources) { source ->
+                                Text(source.name, color = Color.White, modifier = Modifier.padding(7.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Card(Modifier.weight(1.4f).fillMaxHeight()) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("Audio Mixer", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text("Microphone", color = Color.White)
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Spacer(Modifier.height(8.dp))
+                    Text("Real AudioRecord input", color = Color.Gray)
+                    Text("Recording state: " + studio, color = Color.White)
+                }
+            }
+
+            Card(Modifier.weight(1.25f).fillMaxHeight()) {
+                Column(Modifier.padding(10.dp)) {
+                    Text("Controls", style = MaterialTheme.typography.titleMedium)
+                    Button(
+                        enabled = studio == StudioState.IDLE,
+                        onClick = {
+                            activity.startRecording(
+                                vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY,
+                                cornerRadius, borderWidth
+                            ) { error = it }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Start Recording") }
+
+                    OutlinedButton(
+                        enabled = studio == StudioState.IDLE,
+                        onClick = { showQualityDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Quality") }
+
+                    Box {
+                        OutlinedButton(
+                            enabled = studio == StudioState.IDLE,
+                            onClick = { showCameraMenu = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (!activity.isCameraEnabled()) "Camera: OFF"
+                                else "Camera: " + activity.cameraLens().name
+                            )
+                        }
+                        DropdownMenu(
+                            expanded = showCameraMenu,
+                            onDismissRequest = { showCameraMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Front Camera") },
+                                onClick = {
+                                    activity.setCameraLens(CameraCaptureManager.Lens.FRONT)
+                                    if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                    showCameraMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Back Camera") },
+                                onClick = {
+                                    activity.setCameraLens(CameraCaptureManager.Lens.BACK)
+                                    if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                    showCameraMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Camera OFF") },
+                                onClick = { showCameraMenu = false },
+                            )
+                        }
+                    }
+
+                    Box {
+                        OutlinedButton(
+                            enabled = studio == StudioState.IDLE && activity.isCameraEnabled(),
+                            onClick = { showFrameMenu = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text("Camera Frame") }
+                        DropdownMenu(
+                            expanded = showFrameMenu,
+                            onDismissRequest = { showFrameMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Rounded") },
+                                onClick = {
+                                    frameShape = SceneCompositor.FrameShape.ROUNDED
+                                    showFrameMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Rectangle") },
+                                onClick = {
+                                    frameShape = SceneCompositor.FrameShape.RECTANGLE
+                                    showFrameMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Circle") },
+                                onClick = {
+                                    frameShape = SceneCompositor.FrameShape.CIRCLE
+                                    showFrameMenu = false
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Size", color = Color.White)
+            Slider(
+                value = cameraScale,
+                onValueChange = { cameraScale = it },
+                valueRange = 0.15f..0.7f,
+                modifier = Modifier.width(150.dp),
+            )
+            Text("Corner", color = Color.White)
+            Slider(
+                value = cornerRadius,
+                onValueChange = { cornerRadius = it },
+                valueRange = 0f..0.45f,
+                modifier = Modifier.width(150.dp),
+            )
+            Text("Border", color = Color.White)
+            Slider(
+                value = borderWidth,
+                onValueChange = { borderWidth = it },
+                valueRange = 0f..0.08f,
+                modifier = Modifier.width(150.dp),
+            )
+        }
+
+        error?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(10.dp))
+        }
+        if (recordings.isNotEmpty()) {
+            Text(
+                "Recordings: " + recordings.size,
+                color = Color.Gray,
+                modifier = Modifier.padding(10.dp),
+            )
         }
     }
 
@@ -286,12 +463,14 @@ private fun StudioScreen(
                             enabled = supported,
                             onClick = {
                                 selectedProfile = profile
+                                vm.setQuality(profile)
                                 showQualityDialog = false
                             },
                         ) {
                             Text(
-                                profile.name + " — " + profile.width + "x" + profile.height + " @ " + profile.fps +
-                                    if (supported) "" else " (unsupported)",
+                                profile.name + " — " + profile.width + "×" + profile.height +
+                                    " @ " + profile.fps + " FPS" +
+                                    if (supported) "" else " (unsupported)"
                             )
                         }
                     }
