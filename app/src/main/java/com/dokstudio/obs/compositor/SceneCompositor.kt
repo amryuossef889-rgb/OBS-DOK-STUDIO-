@@ -69,10 +69,10 @@ class SceneCompositor {
         .asFloatBuffer()
         .apply {
             put(floatArrayOf(
-                -1f, -1f, 0f, 1f,
-                 1f, -1f, 1f, 1f,
-                -1f,  1f, 0f, 0f,
-                 1f,  1f, 1f, 0f,
+                -1f, -1f, 0f, 0f,
+                 1f, -1f, 1f, 0f,
+                -1f,  1f, 0f, 1f,
+                 1f,  1f, 1f, 1f,
             ))
             position(0)
         }
