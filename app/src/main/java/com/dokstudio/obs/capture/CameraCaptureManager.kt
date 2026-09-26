@@ -23,6 +23,7 @@ class CameraCaptureManager(
         width: Int,
         height: Int,
         lens: Lens = Lens.BACK,
+        onStarted: () -> Unit = {},
         onError: (Throwable) -> Unit,
     ) {
         stop()
@@ -53,6 +54,7 @@ class CameraCaptureManager(
                         if (lens == Lens.FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
                         preview,
                     )
+                    onStarted()
                 } catch (t: Throwable) {
                     onError(t)
                 }
