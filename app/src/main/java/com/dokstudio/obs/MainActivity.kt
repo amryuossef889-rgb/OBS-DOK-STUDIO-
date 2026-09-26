@@ -140,10 +140,9 @@ class MainActivity : ComponentActivity() {
             val serviceIntent = Intent(this, StudioForegroundService::class.java)
                 .setAction(StudioForegroundService.ACTION_START)
                 .putExtra(StudioForegroundService.EXTRA_CAMERA, cameraEnabled)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
-            else startService(serviceIntent)
-
-            recording.start(
+            startForegroundCaptureService(serviceIntent) {
+                try {
+                    recording.start(
                 code = code,
                 data = data,
                 width = profile.width,
@@ -163,12 +162,18 @@ class MainActivity : ComponentActivity() {
                     vm.engine.ready()
                     vm.engine.markRecording()
                 },
-                onError = {
+                    onError = {
+                        stopForegroundCaptureService()
+                        vm.engine.idle()
+                        onError(it.message ?: "Recording failed")
+                    },
+                )
+                } catch (t: Throwable) {
                     stopForegroundCaptureService()
                     vm.engine.idle()
-                    onError(it.message ?: "Recording failed")
-                },
-            )
+                    onError(t.message ?: "Recording failed")
+                }
+            }
         } catch (t: Throwable) {
             stopForegroundCaptureService()
             vm.engine.idle()
@@ -183,7 +188,35 @@ class MainActivity : ComponentActivity() {
         vm.engine.idle()
     }
 
+    private var foregroundServiceBound = false
+    private val foregroundServiceConnection = object : android.content.ServiceConnection {
+        override fun onServiceConnected(name: android.content.ComponentName?, service: android.os.IBinder?) {
+            foregroundServiceBound = true
+        }
+        override fun onServiceDisconnected(name: android.content.ComponentName?) {
+            foregroundServiceBound = false
+        }
+    }
+
+    private fun startForegroundCaptureService(intent: Intent, onReady: () -> Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
+        else startService(intent)
+        bindService(
+            Intent(this, StudioForegroundService::class.java),
+            foregroundServiceConnection,
+            BIND_AUTO_CREATE,
+        )
+        StudioForegroundService.lastBinder?.awaitReady(onReady)
+            ?: android.os.Handler(mainLooper).postDelayed({
+                StudioForegroundService.lastBinder?.awaitReady(onReady)
+            }, 50L)
+    }
+
     private fun stopForegroundCaptureService() {
+        if (foregroundServiceBound) {
+            runCatching { unbindService(foregroundServiceConnection) }
+            foregroundServiceBound = false
+        }
         startService(
             Intent(this, StudioForegroundService::class.java)
                 .setAction(StudioForegroundService.ACTION_STOP),
@@ -195,6 +228,7 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 }
+
 
 @Composable
 private fun StudioScreen(
@@ -223,242 +257,326 @@ private fun StudioScreen(
                 ?: QualityProfile("Balanced", 1280, 720, 30, 6_000_000),
         )
     }
+    val isRecording = studio == StudioState.RECORDING
+    val isBusy = studio != StudioState.IDLE
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF18181B))) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF0D0E11))) {
         Row(
-            Modifier.fillMaxWidth().background(Color(0xFF202124)).padding(horizontal = 12.dp, vertical = 8.dp),
+            Modifier.fillMaxWidth().height(58.dp).background(Color(0xFF17181C)).padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("OBS Dok Studio", color = Color.White, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.width(12.dp))
+            Surface(color = if (isRecording) Color(0xFF3B1518) else Color(0xFF202126), shape = MaterialTheme.shapes.small) {
+                Text(
+                    if (isRecording) "● RECORDING" else "● READY",
+                    color = if (isRecording) Color(0xFFFF6B6B) else Color(0xFFBDBEC5),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+                )
+            }
             Spacer(Modifier.weight(1f))
+            Text("${selectedProfile.width}×${selectedProfile.height}  •  ${selectedProfile.fps} FPS", color = Color(0xFFB7B8C0))
+            Spacer(Modifier.width(14.dp))
             Text(
-                selectedProfile.width.toString() + "×" + selectedProfile.height + " • " +
-                    selectedProfile.fps + " FPS",
-                color = Color.LightGray,
-            )
-            Spacer(Modifier.width(10.dp))
-            Button(
-                enabled = studio == StudioState.IDLE,
-                onClick = { error = null; activity.beginRecording { activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it } } },
-            ) { Text("Start Recording") }
-            Spacer(Modifier.width(8.dp))
-            Button(
-                enabled = studio == StudioState.RECORDING,
-                onClick = { activity.stopRecording(vm) },
-            ) { Text("Stop") }
-        }
-
-        Box(Modifier.fillMaxWidth().weight(1f).padding(10.dp).background(Color.Black)) {
-            AndroidView(
-                modifier = Modifier.fillMaxSize(),
-                factory = { context ->
-                    SurfaceView(context).also { view ->
-                        view.holder.addCallback(object : SurfaceHolder.Callback {
-                            override fun surfaceCreated(holder: SurfaceHolder) {
-                                activity.setPreviewSurface(holder.surface)
-                            }
-                            override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-                                activity.setPreviewSurface(holder.surface)
-                            }
-                            override fun surfaceDestroyed(holder: SurfaceHolder) {
-                                activity.setPreviewSurface(null)
-                            }
-                        })
-                    }
-                },
-                update = {},
-            )
-            Text(
-                if (studio == StudioState.RECORDING) "● REC" else "PREVIEW",
-                color = if (studio == StudioState.RECORDING) Color.Red else Color.White,
-                modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
+                if (recordings.isEmpty()) "No recordings yet" else "${recordings.size} recordings",
+                color = Color(0xFF777982),
             )
         }
 
         Row(
-            Modifier.fillMaxWidth().height(225.dp).padding(10.dp),
+            Modifier.fillMaxWidth().weight(1f).padding(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Card(Modifier.weight(1f).fillMaxHeight()) {
-                Column(Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Scenes", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = vm::addScene) { Text("+") }
-                    }
-                    LazyColumn {
-                        items(scenes) { scene ->
-                            Text(
-                                scene.name,
-                                color = if (vm.selectedScene.value == scene.id) Color.White else Color.LightGray,
-                                modifier = Modifier.fillMaxWidth().padding(7.dp).clickable {
-                                    vm.selectScene(scene.id)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
+            // Left dock: scenes, sources and controls.
+            Surface(
+                Modifier.width(320.dp).fillMaxHeight(),
+                color = Color(0xFF17181C),
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Column(Modifier.fillMaxSize().padding(8.dp)) {
+                    Text(
+                        "STUDIO",
+                        color = Color(0xFF858792),
+                        style = MaterialTheme.typography.labelSmall,
+                        modifier = Modifier.padding(6.dp),
+                    )
 
-            Card(Modifier.weight(1.2f).fillMaxHeight()) {
-                Column(Modifier.padding(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Sources", style = MaterialTheme.typography.titleMedium)
-                        Spacer(Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            TextButton(enabled = vm.selectedScene.value != null, onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } }) { Text("+ Screen") }
-                            TextButton(enabled = vm.selectedScene.value != null, onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } }) { Text("+ Camera") }
+                    Surface(
+                        Modifier.fillMaxWidth().height(155.dp),
+                        color = Color(0xFF202126),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Scenes", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(enabled = !isBusy, onClick = vm::addScene) { Text("+ Add") }
+                            }
+                            LazyColumn {
+                                items(scenes) { scene ->
+                                    val selected = vm.selectedScene.value == scene.id
+                                    Surface(
+                                        Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(enabled = !isBusy) { vm.selectScene(scene.id) },
+                                        color = if (selected) Color(0xFF34234E) else Color.Transparent,
+                                        shape = MaterialTheme.shapes.extraSmall,
+                                    ) {
+                                        Text(
+                                            scene.name,
+                                            color = if (selected) Color.White else Color(0xFFBFC0C7),
+                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
-                    if (sources.isEmpty()) {
-                        Text("No sources in selected scene", color = Color.Gray)
-                    } else {
-                        LazyColumn {
-                            items(sources) { source ->
-                                Text(source.name, color = Color.White, modifier = Modifier.padding(7.dp))
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Surface(
+                        Modifier.fillMaxWidth().weight(1f),
+                        color = Color(0xFF202126),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Sources", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                                Spacer(Modifier.weight(1f))
+                                TextButton(
+                                    enabled = !isBusy && vm.selectedScene.value != null,
+                                    onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } },
+                                ) { Text("+ Screen") }
+                                TextButton(
+                                    enabled = !isBusy && vm.selectedScene.value != null,
+                                    onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } },
+                                ) { Text("+ Camera") }
+                            }
+                            if (sources.isEmpty()) {
+                                Text("No sources in this scene", color = Color(0xFF6F7078), modifier = Modifier.padding(top = 12.dp))
+                            } else {
+                                LazyColumn {
+                                    items(sources) { source ->
+                                        Row(
+                                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                        ) {
+                                            Text(if (source.type == "CAMERA") "◉" else "▣", color = Color(0xFF9B6BFF), modifier = Modifier.width(24.dp))
+                                            Text(source.name, color = Color(0xFFD8D8DD))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Surface(
+                        Modifier.fillMaxWidth().wrapContentHeight(),
+                        color = Color(0xFF202126),
+                        shape = MaterialTheme.shapes.small,
+                    ) {
+                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Controls", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                            Button(
+                                enabled = !isBusy,
+                                onClick = {
+                                    error = null
+                                    activity.beginRecording {
+                                        activity.startRecording(
+                                            vm, selectedProfile, frameShape,
+                                            cameraScale, cameraX, cameraY, cornerRadius, borderWidth
+                                        ) { error = it }
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                            ) { Text("●  Start Recording") }
+
+                            OutlinedButton(
+                                enabled = isRecording,
+                                onClick = { activity.stopRecording(vm) },
+                                modifier = Modifier.fillMaxWidth().height(40.dp),
+                            ) { Text("Stop Recording") }
+
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                OutlinedButton(
+                                    enabled = !isBusy,
+                                    onClick = { showQualityDialog = true },
+                                    modifier = Modifier.weight(1f),
+                                ) { Text("Quality") }
+
+                                Box(Modifier.weight(1f)) {
+                                    OutlinedButton(
+                                        enabled = !isBusy,
+                                        onClick = { showCameraMenu = true },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text(if (activity.isCameraEnabled()) "Camera ON" else "Camera OFF")
+                                    }
+                                    DropdownMenu(expanded = showCameraMenu, onDismissRequest = { showCameraMenu = false }) {
+                                        DropdownMenuItem(
+                                            text = { Text("Front Camera") },
+                                            onClick = {
+                                                activity.setCameraLensSelection(CameraCaptureManager.Lens.FRONT)
+                                                if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                                showCameraMenu = false
+                                            },
+                                        )
+                                        DropdownMenuItem(
+                                            text = { Text("Back Camera") },
+                                            onClick = {
+                                                activity.setCameraLensSelection(CameraCaptureManager.Lens.BACK)
+                                                if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                                showCameraMenu = false
+                                            },
+                                        )
+                                        DropdownMenuItem(text = { Text("Camera OFF") }, onClick = { showCameraMenu = false })
+                                    }
+                                }
+                            }
+
+                            Box {
+                                OutlinedButton(
+                                    enabled = !isBusy && activity.isCameraEnabled(),
+                                    onClick = { showFrameMenu = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text("Camera Frame: ${frameShape.name.lowercase().replaceFirstChar { it.uppercase() }}")
+                                }
+                                DropdownMenu(expanded = showFrameMenu, onDismissRequest = { showFrameMenu = false }) {
+                                    DropdownMenuItem(text = { Text("Rounded") }, onClick = {
+                                        frameShape = SceneCompositor.FrameShape.ROUNDED
+                                        showFrameMenu = false
+                                    })
+                                    DropdownMenuItem(text = { Text("Rectangle") }, onClick = {
+                                        frameShape = SceneCompositor.FrameShape.RECTANGLE
+                                        showFrameMenu = false
+                                    })
+                                    DropdownMenuItem(text = { Text("Circle") }, onClick = {
+                                        frameShape = SceneCompositor.FrameShape.CIRCLE
+                                        showFrameMenu = false
+                                    })
+                                }
                             }
                         }
                     }
                 }
             }
 
-            Card(Modifier.weight(1.4f).fillMaxHeight()) {
-                Column(Modifier.padding(10.dp)) {
-                    Text("Audio Mixer", style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.height(8.dp))
-                    Text("Microphone", color = Color.White)
-                    LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Spacer(Modifier.height(8.dp))
-                    Text("Real AudioRecord input", color = Color.Gray)
-                    Text("Recording state: " + studio, color = Color.White)
-                }
-            }
-
-            Card(Modifier.weight(1.25f).fillMaxHeight()) {
-                Column(Modifier.padding(10.dp)) {
-                    Text("Controls", style = MaterialTheme.typography.titleMedium)
-                    Button(
-                        enabled = studio == StudioState.IDLE,
-                        onClick = { activity.beginRecording { activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it } } },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Start Recording") }
-
-                    OutlinedButton(
-                        enabled = studio == StudioState.IDLE,
-                        onClick = { showQualityDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Quality") }
-
-                    Box {
-                        OutlinedButton(
-                            enabled = studio == StudioState.IDLE,
-                            onClick = { showCameraMenu = true },
-                            modifier = Modifier.fillMaxWidth(),
+            // Main canvas: preview gets the dominant area.
+            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Surface(
+                    Modifier.fillMaxWidth().weight(1f),
+                    color = Color.Black,
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Box(Modifier.fillMaxSize()) {
+                        AndroidView(
+                            modifier = Modifier.fillMaxSize(),
+                            factory = { context ->
+                                SurfaceView(context).also { view ->
+                                    view.holder.addCallback(object : SurfaceHolder.Callback {
+                                        override fun surfaceCreated(holder: SurfaceHolder) { activity.setPreviewSurface(holder.surface) }
+                                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { activity.setPreviewSurface(holder.surface) }
+                                        override fun surfaceDestroyed(holder: SurfaceHolder) { activity.setPreviewSurface(null) }
+                                    })
+                                }
+                            },
+                            update = {},
+                        )
+                        Surface(
+                            color = if (isRecording) Color(0xFF8F1D24) else Color(0xCC17181C),
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
                         ) {
                             Text(
-                                if (!activity.isCameraEnabled()) "Camera: OFF"
-                                else "Camera: " + activity.cameraLens().name
+                                if (isRecording) "● REC" else "PREVIEW",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
                             )
                         }
-                        DropdownMenu(
-                            expanded = showCameraMenu,
-                            onDismissRequest = { showCameraMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Front Camera") },
-                                onClick = {
-                                    activity.setCameraLensSelection(CameraCaptureManager.Lens.FRONT)
-                                    if (!activity.isCameraEnabled()) activity.toggleCamera()
-                                    showCameraMenu = false
-                                },
+                        Text(
+                            "${selectedProfile.width} × ${selectedProfile.height}",
+                            color = Color(0xFF8A8B94),
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
+                        )
+                    }
+                }
+
+                Surface(
+                    Modifier.fillMaxWidth().height(112.dp),
+                    color = Color(0xFF17181C),
+                    shape = MaterialTheme.shapes.medium,
+                ) {
+                    Row(
+                        Modifier.fillMaxSize().padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Audio Mixer", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("Microphone", color = Color(0xFFD5D5DA), modifier = Modifier.width(88.dp))
+                                LinearProgressIndicator(
+                                    progress = { if (isRecording) 0.45f else 0f },
+                                    modifier = Modifier.weight(1f).height(5.dp),
+                                )
+                            }
+                            Text(
+                                if (isRecording) "AudioRecord • active" else "AudioRecord • ready",
+                                color = Color(0xFF777982),
+                                style = MaterialTheme.typography.labelSmall,
                             )
-                            DropdownMenuItem(
-                                text = { Text("Back Camera") },
-                                onClick = {
-                                    activity.setCameraLensSelection(CameraCaptureManager.Lens.BACK)
-                                    if (!activity.isCameraEnabled()) activity.toggleCamera()
-                                    showCameraMenu = false
+                        }
+                        VerticalDivider(Modifier.height(64.dp))
+                        Column(Modifier.width(270.dp)) {
+                            Text("Session", color = Color.White, style = MaterialTheme.typography.titleSmall)
+                            Spacer(Modifier.height(5.dp))
+                            Text(
+                                when (studio) {
+                                    StudioState.IDLE -> "IDLE — ready to capture"
+                                    StudioState.PREPARING -> "PREPARING — initializing pipeline"
+                                    StudioState.READY -> "READY"
+                                    StudioState.RECORDING -> "RECORDING — file being written"
+                                    StudioState.STOPPING -> "STOPPING — finalizing MP4"
                                 },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Camera OFF") },
-                                onClick = { showCameraMenu = false },
+                                color = if (isRecording) Color(0xFFFF7070) else Color(0xFF9B9CA5),
                             )
                         }
                     }
+                }
 
-                    Box {
-                        OutlinedButton(
-                            enabled = studio == StudioState.IDLE && activity.isCameraEnabled(),
-                            onClick = { showFrameMenu = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Camera Frame") }
-                        DropdownMenu(
-                            expanded = showFrameMenu,
-                            onDismissRequest = { showFrameMenu = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Rounded") },
-                                onClick = {
-                                    frameShape = SceneCompositor.FrameShape.ROUNDED
-                                    showFrameMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Rectangle") },
-                                onClick = {
-                                    frameShape = SceneCompositor.FrameShape.RECTANGLE
-                                    showFrameMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Circle") },
-                                onClick = {
-                                    frameShape = SceneCompositor.FrameShape.CIRCLE
-                                    showFrameMenu = false
-                                },
-                            )
-                        }
+                error?.let {
+                    Surface(color = Color(0xFF3A181B), shape = MaterialTheme.shapes.small) {
+                        Text(it, color = Color(0xFFFF9A9A), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
                     }
                 }
             }
         }
 
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        // Camera transform controls are kept in a compact footer.
+        Surface(
+            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 10.dp, vertical = 4.dp),
+            color = Color(0xFF17181C),
+            shape = MaterialTheme.shapes.medium,
         ) {
-            Text("Size", color = Color.White)
-            Slider(value = cameraScale, onValueChange = { cameraScale = it }, valueRange = 0.15f..0.7f, modifier = Modifier.width(110.dp))
-            Text("X", color = Color.White)
-            Slider(value = cameraX, onValueChange = { cameraX = it }, valueRange = -0.85f..0.85f, modifier = Modifier.width(100.dp))
-            Text("Y", color = Color.White)
-            Slider(value = cameraY, onValueChange = { cameraY = it }, valueRange = -0.85f..0.85f, modifier = Modifier.width(100.dp))
-            Text("Corner", color = Color.White)
-            Slider(
-                value = cornerRadius,
-                onValueChange = { cornerRadius = it },
-                valueRange = 0f..0.45f,
-                modifier = Modifier.width(150.dp),
-            )
-            Text("Border", color = Color.White)
-            Slider(
-                value = borderWidth,
-                onValueChange = { borderWidth = it },
-                valueRange = 0f..0.08f,
-                modifier = Modifier.width(150.dp),
-            )
-        }
-
-        error?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(10.dp))
-        }
-        if (recordings.isNotEmpty()) {
-            Text(
-                "Recordings: " + recordings.size,
-                color = Color.Gray,
-                modifier = Modifier.padding(10.dp),
-            )
+            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Camera Layout", color = Color.White)
+                Spacer(Modifier.width(10.dp))
+                Text("Size", color = Color(0xFF9A9BA4))
+                Slider(value = cameraScale, onValueChange = { cameraScale = it }, valueRange = 0.15f..0.7f, enabled = !isBusy, modifier = Modifier.width(150.dp))
+                Text("X", color = Color(0xFF9A9BA4))
+                Slider(value = cameraX, onValueChange = { cameraX = it }, valueRange = -0.85f..0.85f, enabled = !isBusy, modifier = Modifier.width(150.dp))
+                Text("Y", color = Color(0xFF9A9BA4))
+                Slider(value = cameraY, onValueChange = { cameraY = it }, valueRange = -0.85f..0.85f, enabled = !isBusy, modifier = Modifier.width(150.dp))
+                Text("Corner", color = Color(0xFF9A9BA4))
+                Slider(value = cornerRadius, onValueChange = { cornerRadius = it }, valueRange = 0f..0.45f, enabled = !isBusy, modifier = Modifier.width(140.dp))
+                Text("Border", color = Color(0xFF9A9BA4))
+                Slider(value = borderWidth, onValueChange = { borderWidth = it }, valueRange = 0f..0.08f, enabled = !isBusy, modifier = Modifier.width(140.dp))
+            }
         }
     }
 
@@ -480,17 +598,14 @@ private fun StudioScreen(
                             },
                         ) {
                             Text(
-                                profile.name + " — " + profile.width + "×" + profile.height +
-                                    " @ " + profile.fps + " FPS" +
+                                "${profile.name} — ${profile.width}×${profile.height} @ ${profile.fps} FPS" +
                                     if (supported) "" else " (unsupported)"
                             )
                         }
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showQualityDialog = false }) { Text("Close") }
-            },
+            confirmButton = { TextButton(onClick = { showQualityDialog = false }) { Text("Close") },
         )
     }
 }
