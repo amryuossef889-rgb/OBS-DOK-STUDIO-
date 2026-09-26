@@ -40,6 +40,7 @@ class RecordingController(
         fps: Int,
         bitrate: Int,
         includeCamera: Boolean,
+        includeMicrophone: Boolean = true,
         cameraLens: CameraCaptureManager.Lens = CameraCaptureManager.Lens.BACK,
         cameraScale: Float = 0.32f,
         cameraX: Float = 0.62f,
@@ -87,17 +88,19 @@ class RecordingController(
                 },
             )
 
-            mixer.configure("microphone")
-            val microphone = AudioCaptureManager()
-            audio = microphone
-            microphone.start(
-                onPcm = { pcm, ptsUs ->
-                    mixer.process("microphone", pcm)
-                    encoder.queueAudio(pcm, ptsUs)
-                },
-                onLevel = {},
-                onError = onError,
-            )
+            if (includeMicrophone) {
+                mixer.configure("microphone")
+                val microphone = AudioCaptureManager()
+                audio = microphone
+                microphone.start(
+                    onPcm = { pcm, ptsUs ->
+                        mixer.process("microphone", pcm)
+                        encoder.queueAudio(pcm, ptsUs)
+                    },
+                    onLevel = {},
+                    onError = { t -> stop(); onError(t) },
+                )
+            }
 
             val cameraRequired = includeCamera
             val cameraCapture = if (cameraRequired) {
