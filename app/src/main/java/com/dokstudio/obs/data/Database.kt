@@ -89,6 +89,18 @@ interface RecordingDao {
     suspend fun delete(x: RecordingEntity)
 }
 
+@Dao
+interface StreamProfileDao {
+    @Query("SELECT * FROM stream_profiles ORDER BY name")
+    fun observe(): Flow<List<StreamProfileEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(x: StreamProfileEntity)
+
+    @Delete
+    suspend fun delete(x: StreamProfileEntity)
+}
+
 @Database(
     entities = [SceneEntity::class, SourceEntity::class, RecordingEntity::class, StreamProfileEntity::class],
     version = 2,
@@ -97,7 +109,8 @@ interface RecordingDao {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun sceneDao(): SceneDao
     abstract fun sourceDao(): SourceDao
-    abstract fun recordingDao(): RecordingDao\n    abstract fun streamProfileDao(): StreamProfileDao
+    abstract fun recordingDao(): RecordingDao
+    abstract fun streamProfileDao(): StreamProfileDao
 }
 
 class SceneRepository(
