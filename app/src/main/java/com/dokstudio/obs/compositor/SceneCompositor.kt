@@ -93,15 +93,16 @@ class SceneCompositor {
         }
     }
 
-    fun createInputSurface(): InputSource {
+    fun createInputSurface(width: Int, height: Int): InputSource {
         check(::handler.isInitialized) { "Compositor is not initialized" }
+        require(width > 0 && height > 0)
         val result = arrayOfNulls<InputSource>(1)
         var error: Throwable? = null
         val ready = CountDownLatch(1)
         handler.post {
             try {
                 val textureId = createExternalTexture()
-                val texture = SurfaceTexture(textureId)
+                val texture = SurfaceTexture(textureId).apply { setDefaultBufferSize(width, height) }
                 val inputSurface = Surface(texture)
                 val state = InputSource(inputSurface, texture, textureId)
                 layers += LayerState(state)
