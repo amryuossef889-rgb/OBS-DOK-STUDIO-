@@ -20,7 +20,6 @@ class StudioForegroundService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Studio capture", NotificationManager.IMPORTANCE_LOW),
         )
-        lastBinder = binder
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -68,14 +67,10 @@ class StudioForegroundService : Service() {
     override fun onDestroy() {
         foregroundReady = false
         readyCallbacks.clear()
-        if (lastBinder === binder) lastBinder = null
         super.onDestroy()
     }
 
     companion object {
-        @Volatile
-        var lastBinder: LocalBinder? = null
-
         const val ACTION_START = "com.dokstudio.obs.action.START_CAPTURE"
         const val ACTION_STOP = "com.dokstudio.obs.action.STOP_CAPTURE"
         const val EXTRA_CAMERA = "com.dokstudio.obs.extra.CAMERA"
