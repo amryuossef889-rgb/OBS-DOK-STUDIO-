@@ -4,63 +4,78 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.os.Binder
+import android.os.IBinder
 import android.os.Build
+import androidx.core.app.ServiceCompat
 import androidx.core.app.NotificationCompat
 
 class StudioForegroundService : Service() {
+    private var foregroundReady = false
+    private val readyCallbacks = mutableListOf<() -> Unit>()
+    private val binder = LocalBinder()
+
     override fun onCreate() {
         super.onCreate()
-        val manager = getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Studio capture", NotificationManager.IMPORTANCE_LOW),
         )
-
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_media_play)
-            .setContentTitle("OBS Dok Studio")
-            .setContentText("Capture session active")
-            .setOngoing(true)
-            .build()
-
-        if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
-        }
+        lastBinder = binder
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (Build.VERSION.SDK_INT >= 29 && intent?.getBooleanExtra(EXTRA_CAMERA, false) == true) {
+        if (intent?.action == ACTION_STOP) {
+            foregroundReady = false
+            readyCallbacks.clear()
+            if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
+
+        if (intent?.action == ACTION_START) {
+            val camera = intent.getBooleanExtra(EXTRA_CAMERA, false)
             val notification = NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_media_play)
                 .setContentTitle("OBS Dok Studio")
-                .setContentText("Screen, camera and microphone capture active")
+                .setContentText(
+                    if (camera) "Screen, camera and microphone capture active"
+                    else "Screen and microphone capture active"
+                )
                 .setOngoing(true)
                 .build()
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
-            )
-        }
 
-        if (intent?.action == ACTION_STOP) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelfResult(startId)
+            val types =
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    if (camera) android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA else 0
+
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, types)
+            foregroundReady = true
+            readyCallbacks.toList().forEach { it() }
+            readyCallbacks.clear()
         }
         return START_NOT_STICKY
     }
 
-    override fun onBind(intent: Intent?) = null
+    inner class LocalBinder : Binder() {
+        fun awaitReady(callback: () -> Unit) {
+            if (foregroundReady) callback() else readyCallbacks += callback
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder = binder
+
+    override fun onDestroy() {
+        foregroundReady = false
+        readyCallbacks.clear()
+        if (lastBinder === binder) lastBinder = null
+        super.onDestroy()
+    }
 
     companion object {
+        @Volatile
+        var lastBinder: LocalBinder? = null
+
         const val ACTION_START = "com.dokstudio.obs.action.START_CAPTURE"
         const val ACTION_STOP = "com.dokstudio.obs.action.STOP_CAPTURE"
         const val EXTRA_CAMERA = "com.dokstudio.obs.extra.CAMERA"
