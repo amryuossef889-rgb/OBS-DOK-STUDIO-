@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
-    private val projectionLauncher =
+    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            if (!granted) {\n                cameraEnabled = false\n            }\n        }\n\n    private var cameraEnabled = false\n\n    private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
         projectionLauncher.launch(manager.createScreenCaptureIntent())
     }
 
-    fun setPreviewSurface(surface: android.view.Surface?) {
+    fun toggleCamera() {\n        if (PermissionCoordinator(this).missingCameraPermission()) {\n            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)\n        } else {\n            cameraEnabled = !cameraEnabled\n        }\n    }\n\n    fun isCameraEnabled(): Boolean = cameraEnabled\n\n    fun setPreviewSurface(surface: android.view.Surface?) {
         recording.setPreviewSurface(surface)
     }
 
