@@ -70,7 +70,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         recording = RecordingController(this, this)
-        setContent { MaterialTheme { StudioScreen(this, projectionLauncher) } }
+        setContent { MaterialTheme(colorScheme = darkColorScheme(primary = Color(0xFF8B5CF6), secondary = Color(0xFFB39DDB), background = Color(0xFF111216), surface = Color(0xFF1B1C20), surfaceVariant = Color(0xFF24252B), onBackground = Color.White, onSurface = Color.White)) { StudioScreen(this) } }
     }
 
     fun requestCapturePermissions() {
@@ -236,7 +236,7 @@ private fun StudioScreen(
             Button(
                 enabled = studio == StudioState.IDLE,
                 onClick = { error = null; activity.beginRecording { activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it } } },
-            ) { Text("Start Capture") }
+            ) { Text("Start Recording") }
             Spacer(Modifier.width(8.dp))
             Button(
                 enabled = studio == StudioState.RECORDING,
@@ -301,12 +301,10 @@ private fun StudioScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Sources", style = MaterialTheme.typography.titleMedium)
                         Spacer(Modifier.weight(1f))
-                        TextButton(
-                            enabled = vm.selectedScene.value != null,
-                            onClick = {
-                                vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") }
-                            },
-                        ) { Text("+ Screen") }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            TextButton(enabled = vm.selectedScene.value != null, onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } }) { Text("+ Screen") }
+                            TextButton(enabled = vm.selectedScene.value != null, onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } }) { Text("+ Camera") }
+                        }
                     }
                     if (sources.isEmpty()) {
                         Text("No sources in selected scene", color = Color.Gray)
