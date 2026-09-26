@@ -17,12 +17,33 @@ class StudioForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        getSystemService(NotificationManager::class.java).createNotificationChannel(
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Studio capture", NotificationManager.IMPORTANCE_LOW),
+        )
+        manager.createNotificationChannel(
+            NotificationChannel(ERROR_CHANNEL_ID, "Studio recording events", NotificationManager.IMPORTANCE_DEFAULT),
         )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_ERROR) {
+            val reason = intent.getStringExtra(EXTRA_ERROR) ?: "Recording stopped unexpectedly"
+            val notification = NotificationCompat.Builder(this, ERROR_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setContentTitle("OBS Dok Studio — Recording stopped")
+                .setContentText(reason)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(reason))
+                .setAutoCancel(true)
+                .build()
+            getSystemService(NotificationManager::class.java).notify(ERROR_NOTIFICATION_ID, notification)
+            foregroundReady = false
+            readyCallbacks.clear()
+            if (Build.VERSION.SDK_INT >= 24) stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
+            return START_NOT_STICKY
+        }
+
         if (intent?.action == ACTION_STOP) {
             foregroundReady = false
             readyCallbacks.clear()
@@ -73,8 +94,12 @@ class StudioForegroundService : Service() {
     companion object {
         const val ACTION_START = "com.dokstudio.obs.action.START_CAPTURE"
         const val ACTION_STOP = "com.dokstudio.obs.action.STOP_CAPTURE"
+        const val ACTION_ERROR = "com.dokstudio.obs.action.RECORDING_ERROR"
         const val EXTRA_CAMERA = "com.dokstudio.obs.extra.CAMERA"
+        const val EXTRA_ERROR = "com.dokstudio.obs.extra.ERROR"
         private const val CHANNEL_ID = "studio_capture"
+        private const val ERROR_CHANNEL_ID = "studio_recording_events"
         private const val NOTIFICATION_ID = 42
+        private const val ERROR_NOTIFICATION_ID = 43
     }
 }
