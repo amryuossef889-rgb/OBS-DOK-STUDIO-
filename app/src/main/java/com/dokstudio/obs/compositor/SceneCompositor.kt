@@ -375,6 +375,7 @@ class SceneCompositor {
         """
         private const val FRAGMENT_SHADER = """
             #extension GL_OES_EGL_image_external : require
+            #extension GL_OES_standard_derivatives : enable
             precision mediump float;
             uniform samplerExternalOES uTexture;
             uniform float uAlpha;
