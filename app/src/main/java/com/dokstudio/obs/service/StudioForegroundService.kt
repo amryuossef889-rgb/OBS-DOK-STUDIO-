@@ -11,14 +11,9 @@ import com.dokstudio.obs.R
 class StudioForegroundService : Service() {
     override fun onCreate() {
         super.onCreate()
-
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "Studio capture",
-                NotificationManager.IMPORTANCE_LOW,
-            ),
+            NotificationChannel(CHANNEL_ID, "Studio capture", NotificationManager.IMPORTANCE_LOW),
         )
 
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
@@ -32,8 +27,7 @@ class StudioForegroundService : Service() {
             startForeground(
                 NOTIFICATION_ID,
                 notification,
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
             )
         } else {
@@ -42,12 +36,9 @@ class StudioForegroundService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelfResult(startId)
-            }
-            ACTION_START, null -> Unit
+        if (intent?.action == ACTION_STOP) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelfResult(startId)
         }
         return START_NOT_STICKY
     }
