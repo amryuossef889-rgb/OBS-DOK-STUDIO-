@@ -48,8 +48,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     ),
                 )
             }
-            selectedScene.value = scenes.firstOrNull()?.id
-            if (selectedScene.value == null) selectedScene.value = scenes.firstOrNull()?.id
+            selectedScene.value = scenes.first().firstOrNull()?.id
         }
     }
 
