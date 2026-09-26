@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
+import android.view.Surface
 import com.dokstudio.obs.capture.AudioCaptureManager
 import com.dokstudio.obs.capture.ScreenCaptureManager
 import com.dokstudio.obs.compositor.SceneCompositor
@@ -15,6 +16,12 @@ class RecordingController(private val context: Context) {
     private var audio: AudioCaptureManager? = null
     private val handler = Handler(Looper.getMainLooper())
     private var drainLoop: Runnable? = null
+    @Volatile private var previewSurface: Surface? = null
+
+    fun setPreviewSurface(surface: Surface?) {
+        previewSurface = surface
+        compositor?.setPreviewSurface(surface)
+    }
 
     fun start(
         code: Int,
@@ -34,16 +41,12 @@ class RecordingController(private val context: Context) {
         try {
             val encoder = MediaCodecRecorder(context)
             val encoderSurface = encoder.start(
-                MediaCodecRecorder.Config(
-                    width = width,
-                    height = height,
-                    fps = fps,
-                    bitrate = bitrate,
-                ),
+                MediaCodecRecorder.Config(width = width, height = height, fps = fps, bitrate = bitrate),
             )
 
             val gpuCompositor = SceneCompositor()
             gpuCompositor.initialize(encoderSurface)
+            gpuCompositor.setPreviewSurface(previewSurface)
             val screenInput = gpuCompositor.createInputSurface()
 
             val screenCapture = ScreenCaptureManager(context)
@@ -93,16 +96,12 @@ class RecordingController(private val context: Context) {
     fun stop() {
         drainLoop?.let(handler::removeCallbacks)
         drainLoop = null
-
         screen?.stop()
         screen = null
-
         audio?.stop()
         audio = null
-
         compositor?.release()
         compositor = null
-
         recorder?.let { runCatching { it.stop() } }
         recorder = null
     }
