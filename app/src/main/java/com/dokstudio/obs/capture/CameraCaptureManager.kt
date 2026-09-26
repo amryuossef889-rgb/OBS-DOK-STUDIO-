@@ -16,10 +16,13 @@ class CameraCaptureManager(
     private var provider: ProcessCameraProvider? = null
     private var targetSurface: Surface? = null
 
+    enum class Lens { BACK, FRONT }
+
     fun start(
         target: Surface,
         width: Int,
         height: Int,
+        lens: Lens = Lens.BACK,
         onError: (Throwable) -> Unit,
     ) {
         stop()
@@ -47,7 +50,7 @@ class CameraCaptureManager(
                     cameraProvider.unbindAll()
                     cameraProvider.bindToLifecycle(
                         owner,
-                        CameraSelector.DEFAULT_BACK_CAMERA,
+                        if (lens == Lens.FRONT) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA,
                         preview,
                     )
                 } catch (t: Throwable) {
