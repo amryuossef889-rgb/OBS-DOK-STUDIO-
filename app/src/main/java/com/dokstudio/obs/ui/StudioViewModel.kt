@@ -59,6 +59,10 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         selectedBitrate = profile.bitrate
     }
 
+    fun selectScene(id: String) {
+        selectedScene.value = id
+    }
+
     fun addScene() {
         viewModelScope.launch {
             val n = scenes.value.size
