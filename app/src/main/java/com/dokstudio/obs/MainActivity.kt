@@ -4,7 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.Bundle
+import android.os.Bundle\nimport android.provider.OpenableColumns
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
@@ -28,7 +28,7 @@ import com.dokstudio.obs.permissions.PermissionCoordinator
 import com.dokstudio.obs.recording.EncoderCapabilities
 import com.dokstudio.obs.recording.QualityProfile
 import com.dokstudio.obs.recording.RecordingController
-import com.dokstudio.obs.service.StudioForegroundService
+import com.dokstudio.obs.service.StudioForegroundService\nimport com.dokstudio.obs.data.RecordingEntity\nimport java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private lateinit var recording: RecordingController
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
-    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled by mutableStateOf(false)\n\n    private val projectionLauncher =
+    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled by mutableStateOf(false)\n    private var recordingStartedAt = 0L\n\n    private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
                     vm.engine.ready()
                     vm.engine.markRecording()
                 },
-                onError = {
+                onStopped = {},\n                onError = {
                     stopForegroundCaptureService()
                     vm.engine.idle()
                     onError(it.message ?: "Recording failed")
