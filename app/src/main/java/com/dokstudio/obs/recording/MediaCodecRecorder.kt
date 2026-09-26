@@ -32,6 +32,7 @@ class MediaCodecRecorder(private val context: Context) {
     private var outputFd: android.os.ParcelFileDescriptor? = null
     private val stopped = AtomicBoolean(false)
     private var lastAudioPtsUs = 0L
+    private var audioSampleRate = 48_000
 
     fun start(config: Config): Surface {
         require(config.width > 0 && config.height > 0 && config.fps > 0 && config.bitrate > 0)
@@ -46,6 +47,12 @@ class MediaCodecRecorder(private val context: Context) {
         }
 
         try {
+            stopped.set(false)
+            videoTrack = -1
+            audioTrack = -1
+            muxerStarted = false
+            lastAudioPtsUs = 0L
+            audioSampleRate = config.sampleRate
             outputUri = context.contentResolver.insert(
                 MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
                 values,
@@ -71,6 +78,9 @@ class MediaCodecRecorder(private val context: Context) {
                 setInteger(MediaFormat.KEY_BIT_RATE, config.bitrate)
                 setInteger(MediaFormat.KEY_FRAME_RATE, config.fps)
                 setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+                // The compositor outputs a correctly oriented landscape frame; do not attach
+                // stale device rotation metadata that can make players rotate it a second time.
+                setInteger(MediaFormat.KEY_ROTATION, 0)
             }
 
             videoCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also {
@@ -110,7 +120,11 @@ class MediaCodecRecorder(private val context: Context) {
 
         while (true) {
             when (val index = codec.dequeueOutputBuffer(info, timeoutUs)) {
-                MediaCodec.INFO_TRY_AGAIN_LATER -> return didWork
+                MediaCodec.INFO_TRY_AGAIN_LATER -> {
+                    // Keep AAC output draining even when the video encoder is producing no frame.
+                    drainAudio()
+                    return didWork
+                }
                 MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
                     check(videoTrack < 0) { "Video output format changed twice" }
                     videoTrack = muxer!!.addTrack(codec.outputFormat)
@@ -139,7 +153,8 @@ class MediaCodecRecorder(private val context: Context) {
     @Synchronized
     fun queueAudio(pcm: ByteArray, ptsUs: Long) {
         val codec = audioCodec ?: return
-        lastAudioPtsUs = maxOf(lastAudioPtsUs, ptsUs)
+        val chunkDurationUs = pcm.size.toLong() * 1_000_000L / (audioSampleRate.toLong() * 2L)
+        lastAudioPtsUs = maxOf(lastAudioPtsUs, ptsUs + chunkDurationUs)
         var offset = 0
         while (offset < pcm.size) {
             val index = codec.dequeueInputBuffer(10_000)
@@ -202,7 +217,7 @@ class MediaCodecRecorder(private val context: Context) {
                         index,
                         0,
                         0,
-                        lastAudioPtsUs + 20_000L,
+                        lastAudioPtsUs + 1_000L,
                         MediaCodec.BUFFER_FLAG_END_OF_STREAM,
                     )
                 }
