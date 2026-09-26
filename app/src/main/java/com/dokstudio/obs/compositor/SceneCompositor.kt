@@ -17,6 +17,8 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 class SceneCompositor {
+    enum class FrameShape { RECTANGLE, ROUNDED, CIRCLE }
+
     data class InputSource internal constructor(
         val surface: Surface,
         internal val texture: SurfaceTexture,
