@@ -97,7 +97,7 @@ interface RecordingDao {
 abstract class AppDatabase : RoomDatabase() {
     abstract fun sceneDao(): SceneDao
     abstract fun sourceDao(): SourceDao
-    abstract fun recordingDao(): RecordingDao
+    abstract fun recordingDao(): RecordingDao\n    abstract fun streamProfileDao(): StreamProfileDao
 }
 
 class SceneRepository(
