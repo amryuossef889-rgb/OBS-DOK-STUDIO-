@@ -91,6 +91,7 @@ class MainActivity : ComponentActivity() {
         }
 
         try {
+            vm.engine.prepare()
             val serviceIntent = Intent(this, StudioForegroundService::class.java)
                 .setAction(StudioForegroundService.ACTION_START)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -106,7 +107,10 @@ class MainActivity : ComponentActivity() {
                 height = profile.height,
                 fps = profile.fps,
                 bitrate = profile.bitrate,
-                onStarted = { vm.engine.markRecording() },
+                onStarted = {
+                    vm.engine.ready()
+                    vm.engine.markRecording()
+                },
                 onError = {
                     stopForegroundCaptureService()
                     vm.engine.idle()
@@ -164,21 +168,12 @@ private fun StudioScreen(
                 enabled = studio == StudioState.IDLE,
                 onClick = {
                     error = null
-                    vm.engine.prepare()
-                    vm.engine.ready()
-                },
-            ) { Text("Prepare") }
-
-            Button(
-                enabled = studio == StudioState.READY,
-                onClick = {
-                    error = null
                     activity.requestCapturePermissions()
                 },
             ) { Text("Screen Consent") }
 
             Button(
-                enabled = studio == StudioState.READY,
+                enabled = studio == StudioState.IDLE,
                 onClick = { activity.startRecording(vm, selectedProfile) { error = it } },
             ) { Text("Record") }
 
