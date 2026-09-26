@@ -136,6 +136,7 @@ class MediaCodecRecorder(private val context: Context) {
 
     fun outputUri(): Uri? = outputUri
 
+    @Synchronized
     fun queueAudio(pcm: ByteArray, ptsUs: Long) {
         val codec = audioCodec ?: return
         lastAudioPtsUs = maxOf(lastAudioPtsUs, ptsUs)
@@ -147,7 +148,8 @@ class MediaCodecRecorder(private val context: Context) {
             buffer.clear()
             val count = minOf(buffer.remaining(), pcm.size - offset)
             buffer.put(pcm, offset, count)
-            codec.queueInputBuffer(index, 0, count, ptsUs, 0)
+            val chunkPtsUs = ptsUs + (offset.toLong() * 1_000_000L / (48_000L * 2L))
+            codec.queueInputBuffer(index, 0, count, chunkPtsUs, 0)
             offset += count
         }
         drainAudio()
@@ -186,6 +188,7 @@ class MediaCodecRecorder(private val context: Context) {
         }
     }
 
+    @Synchronized
     fun stop(): Uri? {
         if (!stopped.compareAndSet(false, true)) return outputUri
 
@@ -199,7 +202,7 @@ class MediaCodecRecorder(private val context: Context) {
                         index,
                         0,
                         0,
-                        maxOf(lastAudioPtsUs, System.nanoTime() / 1_000),
+                        lastAudioPtsUs + 20_000L,
                         MediaCodec.BUFFER_FLAG_END_OF_STREAM,
                     )
                 }
