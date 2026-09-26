@@ -116,7 +116,7 @@ abstract class AppDatabase : RoomDatabase() {
 class SceneRepository(
     private val scenes: SceneDao,
     private val sources: SourceDao,
-    private val recordings: RecordingDao,
+    private val recordingsDao: RecordingDao,
 ) {
     val sceneFlow = scenes.observe()
 
@@ -127,7 +127,7 @@ class SceneRepository(
     suspend fun save(x: SourceEntity) = sources.upsert(x)
     suspend fun delete(x: SourceEntity) = sources.delete(x)
 
-    val recordings = recordings.observe()
-    suspend fun save(x: RecordingEntity) = recordings.upsert(x)
-    suspend fun delete(x: RecordingEntity) = recordings.delete(x)
+    val recordings = recordingsDao.observe()
+    suspend fun save(x: RecordingEntity) = recordingsDao.upsert(x)
+    suspend fun delete(x: RecordingEntity) = recordingsDao.delete(x)
 }
