@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
         try {
             vm.engine.prepare()
             val serviceIntent = Intent(this, StudioForegroundService::class.java)
-                .setAction(StudioForegroundService.ACTION_START)
+                .setAction(StudioForegroundService.ACTION_START)\n                .putExtra(StudioForegroundService.EXTRA_CAMERA, cameraEnabled)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
             else startService(serviceIntent)
 
