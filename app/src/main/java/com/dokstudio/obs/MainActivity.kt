@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -64,6 +63,11 @@ class MainActivity : ComponentActivity() {
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
                 projectionData = result.data
+                val action = pendingStart
+                pendingStart = null
+                action?.invoke()
+            } else {
+                pendingStart = null
             }
         }
 
@@ -194,7 +198,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun StudioScreen(
     activity: MainActivity,
-    projectionLauncher: ActivityResultLauncher<Intent>,
     vm: com.dokstudio.obs.ui.StudioViewModel = viewModel(),
 ) {
     val scenes by vm.scenes.collectAsState()
