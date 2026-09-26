@@ -33,8 +33,8 @@ class RecordingController(
     }
 
     fun start(
-        code: Int,
-        data: Intent,
+        code: Int?,
+        data: Intent?,
         width: Int,
         height: Int,
         fps: Int,
@@ -71,11 +71,22 @@ class RecordingController(
 
             val screenEnabled = sceneSources.isEmpty() || sceneSources.any { it.type.equals("SCREEN", true) && it.visible }
             val screenInput = if (screenEnabled) gpuCompositor.createInputSurface(width, height) else null
-            screenInput?.let { gpuCompositor.updateLayer(it, z = 0) }
+            val screenSource = sceneSources.firstOrNull { it.type.equals("SCREEN", true) && it.visible }
+            screenInput?.let {
+                gpuCompositor.updateLayer(
+                    it,
+                    z = screenSource?.zIndex ?: 0,
+                    scaleX = screenSource?.width ?: 1f,
+                    scaleY = screenSource?.height ?: 1f,
+                    translateX = screenSource?.x ?: 0f,
+                    translateY = screenSource?.y ?: 0f,
+                    alpha = screenSource?.opacity ?: 1f,
+                )
+            }
 
             val screenCapture = ScreenCaptureManager(context)
             screen = screenCapture
-            if (screenInput != null) screenCapture.startDirect(
+            if (screenInput != null && code != null && data != null) screenCapture.startDirect(
                 code = code,
                 data = data,
                 surface = screenInput.surface,
@@ -110,10 +121,11 @@ class RecordingController(
                 gpuCompositor.updateLayer(
                     cameraInput,
                     z = 1,
-                    scaleX = cameraScale,
-                    scaleY = cameraScale,
-                    translateX = cameraX,
-                    translateY = cameraY,
+                    scaleX = sceneSources.firstOrNull { it.type.equals("CAMERA", true) && it.visible }?.width ?: cameraScale,
+                    scaleY = sceneSources.firstOrNull { it.type.equals("CAMERA", true) && it.visible }?.height ?: cameraScale,
+                    translateX = sceneSources.firstOrNull { it.type.equals("CAMERA", true) && it.visible }?.x ?: cameraX,
+                    translateY = sceneSources.firstOrNull { it.type.equals("CAMERA", true) && it.visible }?.y ?: cameraY,
+                    alpha = sceneSources.firstOrNull { it.type.equals("CAMERA", true) && it.visible }?.opacity ?: 1f,
                 )
                 gpuCompositor.setFrameStyle(
                     cameraInput,
