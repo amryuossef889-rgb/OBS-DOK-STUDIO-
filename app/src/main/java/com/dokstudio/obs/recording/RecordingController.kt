@@ -61,9 +61,11 @@ class RecordingController(
             val encoderSurface = encoder.start(
                 MediaCodecRecorder.Config(width = width, height = height, fps = fps, bitrate = bitrate),
             )
+            recorder = encoder
 
             val gpuCompositor = SceneCompositor()
             gpuCompositor.initialize(encoderSurface)
+            compositor = gpuCompositor
             gpuCompositor.setPreviewSurface(previewSurface)
 
             val screenEnabled = sceneSources.isEmpty() || sceneSources.any { it.type.equals("SCREEN", true) && it.visible }
@@ -71,6 +73,7 @@ class RecordingController(
             screenInput?.let { gpuCompositor.updateLayer(it, z = 0) }
 
             val screenCapture = ScreenCaptureManager(context)
+            screen = screenCapture
             if (screenInput != null) screenCapture.startDirect(
                 code = code,
                 data = data,
@@ -79,12 +82,14 @@ class RecordingController(
                 height = height,
                 dpi = context.resources.displayMetrics.densityDpi,
                 onStopped = {
+                    stop()
                     onError(IllegalStateException("MediaProjection session ended"))
                 },
             )
 
             mixer.configure("microphone")
             val microphone = AudioCaptureManager()
+            audio = microphone
             microphone.start(
                 onPcm = { pcm, ptsUs ->
                     mixer.process("microphone", pcm)
@@ -97,6 +102,7 @@ class RecordingController(
             val cameraRequired = includeCamera && (sceneSources.isEmpty() || sceneSources.any { it.type.equals("CAMERA", true) && it.visible })
             val cameraCapture = if (cameraRequired) {
                 val manager = CameraCaptureManager(context, lifecycleOwner)
+                camera = manager
                 val cameraInput = gpuCompositor.createInputSurface(width, height)
                 gpuCompositor.updateLayer(
                     cameraInput,
@@ -125,13 +131,7 @@ class RecordingController(
                 null
             }
 
-            recorder = encoder
-            compositor = gpuCompositor
-            screen = screenCapture
-            camera = cameraCapture
-            audio = microphone
-
-            drainLoop = object : Runnable {
+                        drainLoop = object : Runnable {
                 override fun run() {
                     try {
                         encoder.drainVideo()
