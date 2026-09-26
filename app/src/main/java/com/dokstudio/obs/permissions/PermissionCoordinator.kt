@@ -9,15 +9,13 @@ import androidx.core.content.ContextCompat
 
 class PermissionCoordinator(private val activity: Activity) {
     fun missingCapturePermissions(): List<String> {
-        val permissions = mutableListOf(
-            Manifest.permission.CAMERA,
-            Manifest.permission.RECORD_AUDIO,
-        )
-        if (Build.VERSION.SDK_INT >= 33) {
-            permissions += Manifest.permission.POST_NOTIFICATIONS
-        }
+        val permissions = mutableListOf(Manifest.permission.RECORD_AUDIO)
+        if (Build.VERSION.SDK_INT >= 33) permissions += Manifest.permission.POST_NOTIFICATIONS
         return permissions.filterNot(::isGranted)
     }
+
+    fun missingCameraPermission(): Boolean =
+        !isGranted(Manifest.permission.CAMERA)
 
     fun requestCapturePermissions() {
         val missing = missingCapturePermissions()
@@ -30,8 +28,7 @@ class PermissionCoordinator(private val activity: Activity) {
         }
     }
 
-    fun capturePermissionsGranted(): Boolean =
-        missingCapturePermissions().isEmpty()
+    fun capturePermissionsGranted(): Boolean = missingCapturePermissions().isEmpty()
 
     private fun isGranted(permission: String): Boolean =
         ContextCompat.checkSelfPermission(activity, permission) == PackageManager.PERMISSION_GRANTED
