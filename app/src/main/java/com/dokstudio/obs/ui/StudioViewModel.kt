@@ -46,6 +46,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 selectedScene.value = sceneId
             } else {
                 selectedScene.value = current.first().id
+                if (application.repository.sources(current.first().id).first().isEmpty()) {
+                    application.repository.save(SourceEntity(UUID.randomUUID().toString(), current.first().id, "SCREEN", "Screen", zIndex = 0))
+                }
             }
         }
     }
