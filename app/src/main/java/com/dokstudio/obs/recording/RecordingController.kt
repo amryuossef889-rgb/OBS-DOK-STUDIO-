@@ -39,6 +39,13 @@ class RecordingController(
         fps: Int,
         bitrate: Int,
         includeCamera: Boolean,
+        cameraLens: CameraCaptureManager.Lens = CameraCaptureManager.Lens.BACK,
+        cameraScale: Float = 0.32f,
+        cameraX: Float = 0.62f,
+        cameraY: Float = -0.62f,
+        cameraFrameShape: SceneCompositor.FrameShape = SceneCompositor.FrameShape.ROUNDED,
+        cameraCornerRadius: Float = 0.14f,
+        cameraBorderWidth: Float = 0.018f,
         onStarted: () -> Unit,
         onError: (Throwable) -> Unit,
     ) {
@@ -57,7 +64,7 @@ class RecordingController(
             gpuCompositor.initialize(encoderSurface)
             gpuCompositor.setPreviewSurface(previewSurface)
 
-            val screenInput = gpuCompositor.createInputSurface()
+            val screenInput = gpuCompositor.createInputSurface(width, height)
             gpuCompositor.updateLayer(screenInput, z = 0)
 
             val screenCapture = ScreenCaptureManager(context)
@@ -86,19 +93,26 @@ class RecordingController(
 
             val cameraCapture = if (includeCamera) {
                 val manager = CameraCaptureManager(context, lifecycleOwner)
-                val cameraInput = gpuCompositor.createInputSurface()
+                val cameraInput = gpuCompositor.createInputSurface(width, height)
                 gpuCompositor.updateLayer(
                     cameraInput,
                     z = 1,
-                    scaleX = 0.32f,
-                    scaleY = 0.32f,
-                    translateX = 0.62f,
-                    translateY = -0.62f,
+                    scaleX = cameraScale,
+                    scaleY = cameraScale,
+                    translateX = cameraX,
+                    translateY = cameraY,
+                )
+                gpuCompositor.setFrameStyle(
+                    cameraInput,
+                    shape = cameraFrameShape,
+                    borderWidth = cameraBorderWidth,
+                    cornerRadius = cameraCornerRadius,
                 )
                 manager.start(
                     target = cameraInput.surface,
                     width = width,
                     height = height,
+                    lens = cameraLens,
                     onError = onError,
                 )
                 manager
