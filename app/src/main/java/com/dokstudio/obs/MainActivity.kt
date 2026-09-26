@@ -32,6 +32,13 @@ class MainActivity : ComponentActivity() {
     private var projectionResult: Int? = null
     private var projectionData: Intent? = null
 
+    private val capturePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val cameraGranted = result[android.Manifest.permission.CAMERA] == true
+            val audioGranted = result[android.Manifest.permission.RECORD_AUDIO] == true
+            if (cameraGranted && audioGranted) requestProjectionConsent()
+        }
+
     private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
@@ -51,7 +58,13 @@ class MainActivity : ComponentActivity() {
     }
 
     fun requestCapturePermissions() {
-        PermissionCoordinator(this).requestCapturePermissions()
+        val missing = PermissionCoordinator(this).missingCapturePermissions()
+            .filter { it != android.Manifest.permission.POST_NOTIFICATIONS }
+        if (missing.isEmpty()) {
+            requestProjectionConsent()
+        } else {
+            capturePermissionLauncher.launch(missing.toTypedArray())
+        }
     }
 
     fun requestProjectionConsent() {
@@ -161,7 +174,6 @@ private fun StudioScreen(
                 onClick = {
                     error = null
                     activity.requestCapturePermissions()
-                    activity.requestProjectionConsent()
                 },
             ) { Text("Screen Consent") }
 
