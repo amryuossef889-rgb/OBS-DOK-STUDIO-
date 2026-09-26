@@ -22,6 +22,9 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val selectedScene = MutableStateFlow<String?>(null)
+    val selectedSources = selectedScene.flatMapLatest { id ->
+        if (id == null) flowOf(emptyList()) else application.repository.sources(id)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     var selectedWidth: Int = 1280
         private set
@@ -45,6 +48,7 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                     ),
                 )
             }
+            selectedScene.value = scenes.firstOrNull()?.id
         }
     }
 
@@ -72,13 +76,14 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addSource(scene: String, type: String) {
         viewModelScope.launch {
+            val z = application.repository.sources(scene).first().maxOfOrNull { it.zIndex }?.plus(1) ?: 0
             application.repository.save(
                 SourceEntity(
                     UUID.randomUUID().toString(),
                     scene,
                     type,
                     type.replaceFirstChar { it.uppercase() },
-                    zIndex = System.currentTimeMillis().toInt(),
+                    zIndex = z,
                 ),
             )
         }
