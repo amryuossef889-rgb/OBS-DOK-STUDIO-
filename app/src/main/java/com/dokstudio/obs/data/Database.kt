@@ -91,7 +91,7 @@ interface RecordingDao {
 
 @Database(
     entities = [SceneEntity::class, SourceEntity::class, RecordingEntity::class, StreamProfileEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {
