@@ -235,6 +235,7 @@ class MainActivity : ComponentActivity() {
 }
 
 
+
 @Composable
 private fun StudioScreen(
     activity: MainActivity,
@@ -247,13 +248,15 @@ private fun StudioScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showCameraMenu by remember { mutableStateOf(false) }
-    var showFrameMenu by remember { mutableStateOf(false) }
     var cameraScale by remember { mutableFloatStateOf(0.32f) }
     var cameraX by remember { mutableFloatStateOf(0.62f) }
     var cameraY by remember { mutableFloatStateOf(-0.62f) }
     var cornerRadius by remember { mutableFloatStateOf(0.14f) }
     var borderWidth by remember { mutableFloatStateOf(0.018f) }
     var frameShape by remember { mutableStateOf(SceneCompositor.FrameShape.ROUNDED) }
+    var transitionName by remember { mutableStateOf("Fade") }
+    var transitionDuration by remember { mutableIntStateOf(300) }
+
     val profiles = remember { EncoderCapabilities.profiles() }
     var selectedProfile by remember {
         mutableStateOf(
@@ -262,326 +265,229 @@ private fun StudioScreen(
                 ?: QualityProfile("Balanced", 1280, 720, 30, 6_000_000),
         )
     }
+
     val isRecording = studio == StudioState.RECORDING
     val isBusy = studio != StudioState.IDLE
+    val bg = Color(0xFF171A22)
+    val panel = Color(0xFF252832)
+    val panelHeader = Color(0xFF303440)
+    val border = Color(0xFF3B3F4C)
+    val selectedBlue = Color(0xFF245DCC)
+    val textPrimary = Color(0xFFE6E8ED)
+    val textSecondary = Color(0xFFB6BAC5)
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF0D0E11))) {
+    Column(Modifier.fillMaxSize().background(bg)) {
         Row(
-            Modifier.fillMaxWidth().height(58.dp).background(Color(0xFF17181C)).padding(horizontal = 16.dp),
+            Modifier.fillMaxWidth().height(34.dp).background(Color(0xFF11131A)).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("OBS Dok Studio", color = Color.White, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.width(12.dp))
-            Surface(color = if (isRecording) Color(0xFF3B1518) else Color(0xFF202126), shape = MaterialTheme.shapes.small) {
-                Text(
-                    if (isRecording) "● RECORDING" else "● READY",
-                    color = if (isRecording) Color(0xFFFF6B6B) else Color(0xFFBDBEC5),
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-                )
+            Text("◉", color = Color(0xFFDDDEE4), style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.width(7.dp))
+            listOf("File", "Edit", "View", "Docks", "Profile", "Scene Collection", "Tools", "Help").forEach {
+                Text(it, color = textPrimary, style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp))
             }
             Spacer(Modifier.weight(1f))
-            Text("${selectedProfile.width}×${selectedProfile.height}  •  ${selectedProfile.fps} FPS", color = Color(0xFFB7B8C0))
-            Spacer(Modifier.width(14.dp))
-            Text(
-                if (recordings.isEmpty()) "No recordings yet" else "${recordings.size} recordings",
-                color = Color(0xFF777982),
-            )
+            Text("OBS Dok Studio", color = Color(0xFF8F95A2), style = MaterialTheme.typography.labelSmall)
+        }
+
+        Box(
+            Modifier.fillMaxWidth().weight(1f).background(Color(0xFF171A22)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Surface(
+                Modifier.fillMaxWidth(0.64f).fillMaxHeight(0.88f),
+                color = Color.Black,
+                shape = MaterialTheme.shapes.extraSmall,
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context ->
+                        SurfaceView(context).also { view ->
+                            view.holder.addCallback(object : SurfaceHolder.Callback {
+                                override fun surfaceCreated(holder: SurfaceHolder) { activity.setPreviewSurface(holder.surface) }
+                                override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { activity.setPreviewSurface(holder.surface) }
+                                override fun surfaceDestroyed(holder: SurfaceHolder) { activity.setPreviewSurface(null) }
+                            })
+                        }
+                    },
+                    update = {},
+                )
+            }
         }
 
         Row(
-            Modifier.fillMaxWidth().weight(1f).padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            Modifier.fillMaxWidth().height(56.dp).background(Color(0xFF20232C)).padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Left dock: scenes, sources and controls.
-            Surface(
-                Modifier.width(320.dp).fillMaxHeight(),
-                color = Color(0xFF17181C),
-                shape = MaterialTheme.shapes.medium,
+            Text("No source selected", color = textSecondary, style = MaterialTheme.typography.labelLarge,
+                modifier = Modifier.weight(1f).padding(start = 4.dp))
+            OutlinedButton(enabled = false, onClick = {}, modifier = Modifier.width(138.dp).height(40.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp)) { Text("⚙  Properties", color = Color(0xFFB9BDC7)) }
+            Spacer(Modifier.width(8.dp))
+            OutlinedButton(enabled = false, onClick = {}, modifier = Modifier.width(112.dp).height(40.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp)) { Text("▣  Filters", color = Color(0xFFB9BDC7)) }
+            Spacer(Modifier.width(8.dp))
+        }
+
+        Row(
+            Modifier.fillMaxWidth().height(292.dp).padding(horizontal = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            ObsDock(
+                title = "Scenes", modifier = Modifier.weight(1f), panel = panel, header = panelHeader, border = border,
             ) {
-                Column(Modifier.fillMaxSize().padding(8.dp)) {
-                    Text(
-                        "STUDIO",
-                        color = Color(0xFF858792),
-                        style = MaterialTheme.typography.labelSmall,
-                        modifier = Modifier.padding(6.dp),
-                    )
-
-                    Surface(
-                        Modifier.fillMaxWidth().height(155.dp),
-                        color = Color(0xFF202126),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Scenes", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                                Spacer(Modifier.weight(1f))
-                                TextButton(enabled = !isBusy, onClick = vm::addScene) { Text("+ Add") }
-                            }
-                            LazyColumn {
-                                items(scenes) { scene ->
-                                    val selected = vm.selectedScene.value == scene.id
-                                    Surface(
-                                        Modifier.fillMaxWidth().padding(vertical = 2.dp).clickable(enabled = !isBusy) { vm.selectScene(scene.id) },
-                                        color = if (selected) Color(0xFF34234E) else Color.Transparent,
-                                        shape = MaterialTheme.shapes.extraSmall,
-                                    ) {
-                                        Text(
-                                            scene.name,
-                                            color = if (selected) Color.White else Color(0xFFBFC0C7),
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 7.dp),
-                                        )
-                                    }
-                                }
+                LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                    items(scenes) { scene ->
+                        val selected = vm.selectedScene.value == scene.id
+                        Surface(
+                            Modifier.fillMaxWidth().height(38.dp).clickable(enabled = !isBusy) { vm.selectScene(scene.id) },
+                            color = if (selected) selectedBlue else Color.Transparent,
+                        ) {
+                            Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(scene.name, color = Color.White, style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
+                }
+                DockButtons(onAdd = { vm.addScene() }, addEnabled = !isBusy)
+            }
 
-                    Spacer(Modifier.height(8.dp))
-
-                    Surface(
-                        Modifier.fillMaxWidth().weight(1f),
-                        color = Color(0xFF202126),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Column(Modifier.padding(10.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Sources", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                                Spacer(Modifier.weight(1f))
-                                TextButton(
-                                    enabled = !isBusy && vm.selectedScene.value != null,
-                                    onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } },
-                                ) { Text("+ Screen") }
-                                TextButton(
-                                    enabled = !isBusy && vm.selectedScene.value != null,
-                                    onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } },
-                                ) { Text("+ Camera") }
-                            }
-                            if (sources.isEmpty()) {
-                                Text("No sources in this scene", color = Color(0xFF6F7078), modifier = Modifier.padding(top = 12.dp))
-                            } else {
-                                LazyColumn {
-                                    items(sources) { source ->
-                                        Row(
-                                            Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                        ) {
-                                            Text(if (source.type == "CAMERA") "◉" else "▣", color = Color(0xFF9B6BFF), modifier = Modifier.width(24.dp))
-                                            Text(source.name, color = Color(0xFFD8D8DD))
-                                        }
-                                    }
-                                }
+            ObsDock(
+                title = "Sources", modifier = Modifier.weight(1.08f), panel = panel, header = panelHeader, border = border,
+            ) {
+                if (sources.isEmpty()) {
+                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("?", color = Color(0xFF8D929E), style = MaterialTheme.typography.displaySmall)
+                            Spacer(Modifier.height(8.dp))
+                            Text("You don't have any sources.", color = textSecondary)
+                            Text("Click the + button below", color = textSecondary)
+                            Text("or right click here to add one.", color = textSecondary)
+                        }
+                    }
+                } else {
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
+                        items(sources) { source ->
+                            Row(Modifier.fillMaxWidth().height(38.dp).padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically) {
+                                Text(if (source.type == "CAMERA") "◉" else "▣", color = Color(0xFFCFD3DD), modifier = Modifier.width(25.dp))
+                                Text(source.name, color = textPrimary)
                             }
                         }
                     }
-
-                    Spacer(Modifier.height(8.dp))
-
-                    Surface(
-                        Modifier.fillMaxWidth().wrapContentHeight(),
-                        color = Color(0xFF202126),
-                        shape = MaterialTheme.shapes.small,
-                    ) {
-                        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text("Controls", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                            Button(
-                                enabled = !isBusy,
-                                onClick = {
-                                    error = null
-                                    activity.beginRecording {
-                                        activity.startRecording(
-                                            vm, selectedProfile, frameShape,
-                                            cameraScale, cameraX, cameraY, cornerRadius, borderWidth
-                                        ) { error = it }
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth().height(42.dp),
-                            ) { Text("●  Start Recording") }
-
-                            OutlinedButton(
-                                enabled = isRecording,
-                                onClick = { activity.stopRecording(vm) },
-                                modifier = Modifier.fillMaxWidth().height(40.dp),
-                            ) { Text("Stop Recording") }
-
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                OutlinedButton(
-                                    enabled = !isBusy,
-                                    onClick = { showQualityDialog = true },
-                                    modifier = Modifier.weight(1f),
-                                ) { Text("Quality") }
-
-                                Box(Modifier.weight(1f)) {
-                                    OutlinedButton(
-                                        enabled = !isBusy,
-                                        onClick = { showCameraMenu = true },
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Text(if (activity.isCameraEnabled()) "Camera ON" else "Camera OFF")
-                                    }
-                                    DropdownMenu(expanded = showCameraMenu, onDismissRequest = { showCameraMenu = false }) {
-                                        DropdownMenuItem(
-                                            text = { Text("Front Camera") },
-                                            onClick = {
-                                                activity.setCameraLensSelection(CameraCaptureManager.Lens.FRONT)
-                                                if (!activity.isCameraEnabled()) activity.toggleCamera()
-                                                showCameraMenu = false
-                                            },
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("Back Camera") },
-                                            onClick = {
-                                                activity.setCameraLensSelection(CameraCaptureManager.Lens.BACK)
-                                                if (!activity.isCameraEnabled()) activity.toggleCamera()
-                                                showCameraMenu = false
-                                            },
-                                        )
-                                        DropdownMenuItem(text = { Text("Camera OFF") }, onClick = { showCameraMenu = false })
-                                    }
-                                }
-                            }
-
-                            Box {
-                                OutlinedButton(
-                                    enabled = !isBusy && activity.isCameraEnabled(),
-                                    onClick = { showFrameMenu = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                ) {
-                                    Text("Camera Frame: ${frameShape.name.lowercase().replaceFirstChar { it.uppercase() }}")
-                                }
-                                DropdownMenu(expanded = showFrameMenu, onDismissRequest = { showFrameMenu = false }) {
-                                    DropdownMenuItem(text = { Text("Rounded") }, onClick = {
-                                        frameShape = SceneCompositor.FrameShape.ROUNDED
-                                        showFrameMenu = false
-                                    })
-                                    DropdownMenuItem(text = { Text("Rectangle") }, onClick = {
-                                        frameShape = SceneCompositor.FrameShape.RECTANGLE
-                                        showFrameMenu = false
-                                    })
-                                    DropdownMenuItem(text = { Text("Circle") }, onClick = {
-                                        frameShape = SceneCompositor.FrameShape.CIRCLE
-                                        showFrameMenu = false
-                                    })
-                                }
-                            }
-                        }
-                    }
+                }
+                Row(Modifier.fillMaxWidth().height(46.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(enabled = !isBusy && vm.selectedScene.value != null,
+                        onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } },
+                        contentPadding = PaddingValues(6.dp)) { Text("+", fontSize = MaterialTheme.typography.titleLarge.fontSize, color = Color.White) }
+                    TextButton(enabled = !isBusy && vm.selectedScene.value != null,
+                        onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } },
+                        contentPadding = PaddingValues(6.dp)) { Text("▣", color = Color.White) }
+                    Spacer(Modifier.weight(1f))
+                    Text("⚙", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 10.dp))
+                    Text("▲", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
+                    Text("▼", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
                 }
             }
 
-            // Main canvas: preview gets the dominant area.
-            Column(Modifier.weight(1f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Surface(
-                    Modifier.fillMaxWidth().weight(1f),
-                    color = Color.Black,
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Box(Modifier.fillMaxSize()) {
-                        AndroidView(
-                            modifier = Modifier.fillMaxSize(),
-                            factory = { context ->
-                                SurfaceView(context).also { view ->
-                                    view.holder.addCallback(object : SurfaceHolder.Callback {
-                                        override fun surfaceCreated(holder: SurfaceHolder) { activity.setPreviewSurface(holder.surface) }
-                                        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) { activity.setPreviewSurface(holder.surface) }
-                                        override fun surfaceDestroyed(holder: SurfaceHolder) { activity.setPreviewSurface(null) }
-                                    })
-                                }
-                            },
-                            update = {},
-                        )
-                        Surface(
-                            color = if (isRecording) Color(0xFF8F1D24) else Color(0xCC17181C),
-                            shape = MaterialTheme.shapes.small,
-                            modifier = Modifier.align(Alignment.TopStart).padding(12.dp),
-                        ) {
-                            Text(
-                                if (isRecording) "● REC" else "PREVIEW",
-                                color = Color.White,
-                                style = MaterialTheme.typography.labelMedium,
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
-                            )
-                        }
-                        Text(
-                            "${selectedProfile.width} × ${selectedProfile.height}",
-                            color = Color(0xFF8A8B94),
-                            modifier = Modifier.align(Alignment.BottomEnd).padding(10.dp),
-                        )
-                    }
+            ObsDock(
+                title = "Audio Mixer", modifier = Modifier.weight(1.42f), panel = panel, header = panelHeader, border = border,
+            ) {
+                MixerRow("Desktop Audio", "-∞ dB")
+                MixerRow("Mic/Aux", "0.0 dB")
+                Spacer(Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().height(44.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("⚙", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 12.dp))
+                    Text("⋮", color = Color(0xFFBFC3CD), style = MaterialTheme.typography.titleLarge)
                 }
+            }
 
-                Surface(
-                    Modifier.fillMaxWidth().height(112.dp),
-                    color = Color(0xFF17181C),
-                    shape = MaterialTheme.shapes.medium,
-                ) {
-                    Row(
-                        Modifier.fillMaxSize().padding(12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Audio Mixer", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                            Spacer(Modifier.height(6.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("Microphone", color = Color(0xFFD5D5DA), modifier = Modifier.width(88.dp))
-                                LinearProgressIndicator(
-                                    progress = { if (isRecording) 0.45f else 0f },
-                                    modifier = Modifier.weight(1f).height(5.dp),
-                                )
-                            }
-                            Text(
-                                if (isRecording) "AudioRecord • active" else "AudioRecord • ready",
-                                color = Color(0xFF777982),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                        VerticalDivider(Modifier.height(64.dp))
-                        Column(Modifier.width(270.dp)) {
-                            Text("Session", color = Color.White, style = MaterialTheme.typography.titleSmall)
-                            Spacer(Modifier.height(5.dp))
-                            Text(
-                                when (studio) {
-                                    StudioState.IDLE -> "IDLE — ready to capture"
-                                    StudioState.PREPARING -> "PREPARING — initializing pipeline"
-                                    StudioState.READY -> "READY"
-                                    StudioState.RECORDING -> "RECORDING — file being written"
-                                    StudioState.STOPPING -> "STOPPING — finalizing MP4"
-                                },
-                                color = if (isRecording) Color(0xFFFF7070) else Color(0xFF9B9CA5),
-                            )
-                        }
-                    }
+            ObsDock(
+                title = "Scene Transitions", modifier = Modifier.weight(1.05f), panel = panel, header = panelHeader, border = border,
+            ) {
+                Row(Modifier.fillMaxWidth().padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Transition", color = textSecondary, modifier = Modifier.weight(1f))
+                    OutlinedButton(enabled = !isBusy, onClick = { transitionName = if (transitionName == "Fade") "Cut" else "Fade" },
+                        modifier = Modifier.width(112.dp).height(40.dp)) { Text(transitionName) }
                 }
+                Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Duration", color = textSecondary, modifier = Modifier.weight(1f))
+                    OutlinedButton(enabled = !isBusy, onClick = { transitionDuration = if (transitionDuration == 300) 500 else 300 },
+                        modifier = Modifier.width(112.dp).height(40.dp)) { Text("${transitionDuration} ms") }
+                }
+                Spacer(Modifier.weight(1f))
+                Row(Modifier.fillMaxWidth().height(48.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 16.dp))
+                    Text("▣", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 12.dp))
+                    Text("⋮", color = Color(0xFFBFC3CD), style = MaterialTheme.typography.titleLarge)
+                }
+            }
 
-                error?.let {
-                    Surface(color = Color(0xFF3A181B), shape = MaterialTheme.shapes.small) {
-                        Text(it, color = Color(0xFFFF9A9A), modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp))
+            ObsDock(
+                title = "Controls", modifier = Modifier.weight(1.12f), panel = panel, header = panelHeader, border = border,
+            ) {
+                Column(Modifier.fillMaxSize().padding(8.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                    Button(enabled = false, onClick = {}, modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3E49), disabledContainerColor = Color(0xFF3A3E49))) {
+                        Text("Start Streaming", color = Color(0xFFE0E2E7))
+                    }
+                    Button(enabled = !isBusy, onClick = {
+                        error = null
+                        activity.beginRecording {
+                            activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it }
+                        }
+                    }, modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3E49))) { Text("Start Recording") }
+
+                    Button(enabled = isRecording, onClick = { activity.stopRecording(vm) },
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3E49))) { Text("Stop Recording") }
+
+                    Button(enabled = false, onClick = {}, modifier = Modifier.fillMaxWidth().height(42.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3A3E49), disabledContainerColor = Color(0xFF3A3E49))) {
+                        Text("Start Virtual Camera")
+                    }
+
+                    OutlinedButton(enabled = !isBusy, onClick = { showQualityDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(40.dp)) { Text("Settings") }
+
+                    Box {
+                        OutlinedButton(enabled = !isBusy, onClick = { showCameraMenu = true },
+                            modifier = Modifier.fillMaxWidth().height(40.dp)) {
+                            Text(if (activity.isCameraEnabled()) "Camera: ON" else "Camera: OFF")
+                        }
+                        DropdownMenu(expanded = showCameraMenu, onDismissRequest = { showCameraMenu = false }) {
+                            DropdownMenuItem(text = { Text("Front Camera") }, onClick = {
+                                activity.setCameraLensSelection(CameraCaptureManager.Lens.FRONT)
+                                if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                showCameraMenu = false
+                            })
+                            DropdownMenuItem(text = { Text("Back Camera") }, onClick = {
+                                activity.setCameraLensSelection(CameraCaptureManager.Lens.BACK)
+                                if (!activity.isCameraEnabled()) activity.toggleCamera()
+                                showCameraMenu = false
+                            })
+                            DropdownMenuItem(text = { Text("Camera OFF") }, onClick = { showCameraMenu = false })
+                        }
                     }
                 }
             }
         }
 
-        // Camera transform controls are kept in a compact footer.
-        Surface(
-            Modifier.fillMaxWidth().height(72.dp).padding(horizontal = 10.dp, vertical = 4.dp),
-            color = Color(0xFF17181C),
-            shape = MaterialTheme.shapes.medium,
+        Row(
+            Modifier.fillMaxWidth().height(28.dp).background(Color(0xFF151821)).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(Modifier.fillMaxSize().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Camera Layout", color = Color.White)
-                Spacer(Modifier.width(10.dp))
-                Text("Size", color = Color(0xFF9A9BA4))
-                Slider(value = cameraScale, onValueChange = { cameraScale = it }, valueRange = 0.15f..0.7f, enabled = !isBusy, modifier = Modifier.width(150.dp))
-                Text("X", color = Color(0xFF9A9BA4))
-                Slider(value = cameraX, onValueChange = { cameraX = it }, valueRange = -0.85f..0.85f, enabled = !isBusy, modifier = Modifier.width(150.dp))
-                Text("Y", color = Color(0xFF9A9BA4))
-                Slider(value = cameraY, onValueChange = { cameraY = it }, valueRange = -0.85f..0.85f, enabled = !isBusy, modifier = Modifier.width(150.dp))
-                Text("Corner", color = Color(0xFF9A9BA4))
-                Slider(value = cornerRadius, onValueChange = { cornerRadius = it }, valueRange = 0f..0.45f, enabled = !isBusy, modifier = Modifier.width(140.dp))
-                Text("Border", color = Color(0xFF9A9BA4))
-                Slider(value = borderWidth, onValueChange = { borderWidth = it }, valueRange = 0f..0.08f, enabled = !isBusy, modifier = Modifier.width(140.dp))
-            }
+            Text(if (isRecording) "REC • recording" else "LIVE: OFFLINE",
+                color = if (isRecording) Color(0xFFE45B63) else Color(0xFFB7BBC5),
+                style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.weight(1f))
+            Text("${selectedProfile.fps} FPS  •  ${selectedProfile.width}×${selectedProfile.height}",
+                color = Color(0xFF8E94A1), style = MaterialTheme.typography.labelSmall)
+            Spacer(Modifier.width(12.dp))
+            Text(if (recordings.isEmpty()) "No recordings" else "${recordings.size} recording(s)",
+                color = Color(0xFF8E94A1), style = MaterialTheme.typography.labelSmall)
         }
     }
 
@@ -594,23 +500,81 @@ private fun StudioScreen(
                     profiles.forEach { entry ->
                         val profile = entry.first
                         val supported = entry.second
-                        TextButton(
-                            enabled = supported,
-                            onClick = {
-                                selectedProfile = profile
-                                vm.setQuality(profile)
-                                showQualityDialog = false
-                            },
-                        ) {
-                            Text(
-                                "${profile.name} — ${profile.width}×${profile.height} @ ${profile.fps} FPS" +
-                                    if (supported) "" else " (unsupported)"
-                            )
+                        TextButton(enabled = supported, onClick = {
+                            selectedProfile = profile
+                            vm.setQuality(profile)
+                            showQualityDialog = false
+                        }) {
+                            Text("${profile.name} — ${profile.width}×${profile.height} @ ${profile.fps} FPS" +
+                                if (supported) "" else " (unsupported)")
                         }
                     }
                 }
             },
             confirmButton = { TextButton(onClick = { showQualityDialog = false }) { Text("Close") } },
         )
+    }
+
+    error?.let {
+        Surface(color = Color(0xFF5B2025), shape = MaterialTheme.shapes.small, modifier = Modifier.padding(10.dp)) {
+            Text(it, color = Color.White, modifier = Modifier.padding(10.dp))
+        }
+    }
+}
+
+@Composable
+private fun ObsDock(
+    title: String,
+    modifier: Modifier,
+    panel: Color,
+    header: Color,
+    border: Color,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(modifier = modifier.fillMaxHeight(), color = panel, shape = MaterialTheme.shapes.extraSmall, tonalElevation = 0.dp) {
+        Column(Modifier.fillMaxSize()) {
+            Row(Modifier.fillMaxWidth().height(38.dp).background(header).padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = Color.White, style = MaterialTheme.typography.titleSmall)
+                Spacer(Modifier.weight(1f))
+                Text("▣", color = Color(0xFFB9BDC7))
+            }
+            HorizontalDivider(color = border, thickness = 1.dp)
+            content()
+        }
+    }
+}
+
+@Composable
+private fun DockButtons(
+    onAdd: () -> Unit,
+    addEnabled: Boolean,
+) {
+    Row(Modifier.fillMaxWidth().height(46.dp), verticalAlignment = Alignment.CenterVertically) {
+        TextButton(enabled = addEnabled, onClick = onAdd, contentPadding = PaddingValues(horizontal = 12.dp)) {
+            Text("+", color = Color.White, style = MaterialTheme.typography.headlineSmall)
+        }
+        Spacer(Modifier.weight(1f))
+        Text("▣", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 8.dp))
+        Text("▲", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
+        Text("▼", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
+    }
+}
+
+@Composable
+private fun MixerRow(name: String, db: String) {
+    Column(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 7.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(name, color = Color(0xFFDDE0E7), style = MaterialTheme.typography.bodyMedium)
+            Spacer(Modifier.weight(1f))
+            Text(db, color = Color(0xFFDDE0E7), style = MaterialTheme.typography.labelMedium)
+        }
+        Spacer(Modifier.height(3.dp))
+        Box(Modifier.fillMaxWidth().height(8.dp).background(Color(0xFF4D7E38)))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("-60", "-48", "-36", "-24", "-12", "-6", "0", "3", "6").forEach {
+                Text(it, color = Color(0xFF9BA0AA), style = MaterialTheme.typography.labelSmall)
+            }
+        }
     }
 }
