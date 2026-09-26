@@ -78,9 +78,35 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             application.repository.save(SceneEntity(sceneId, "Scene " + (n + 1), n, now, now))
             // Every newly-created scene owns its own independent source set.
             application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Display Capture", zIndex = 0))
-            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "CAMERA", "Camera", zIndex = 1))
+            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "CAMERA", "Camera", x = 0.62f, y = -0.62f, width = 0.32f, height = 0.32f, zIndex = 1))
             application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "MICROPHONE", "Microphone", zIndex = 2))
             selectedScene.value = sceneId
+        }
+    }
+
+    fun removeSource(source: SourceEntity) {
+        viewModelScope.launch { application.repository.delete(source) }
+    }
+
+    fun setSourceTransform(source: SourceEntity, x: Float, y: Float, width: Float, height: Float) {
+        viewModelScope.launch {
+            application.repository.save(source.copy(x = x, y = y, width = width.coerceIn(0.05f, 2f), height = height.coerceIn(0.05f, 2f)))
+        }
+    }
+
+    fun toggleSource(source: SourceEntity) {
+        viewModelScope.launch { application.repository.save(source.copy(visible = !source.visible)) }
+    }
+
+    fun moveSource(source: SourceEntity, direction: Int) {
+        viewModelScope.launch {
+            val list = application.repository.sources(source.sceneId).first().sortedBy { it.zIndex }
+            val index = list.indexOfFirst { it.id == source.id }
+            val otherIndex = index + direction
+            if (index < 0 || otherIndex !in list.indices) return@launch
+            val other = list[otherIndex]
+            application.repository.save(source.copy(zIndex = other.zIndex))
+            application.repository.save(other.copy(zIndex = source.zIndex))
         }
     }
 
