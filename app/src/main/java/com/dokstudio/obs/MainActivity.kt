@@ -124,6 +124,7 @@ class MainActivity : ComponentActivity() {
                 height = profile.height,
                 fps = profile.fps,
                 bitrate = profile.bitrate,
+                includeCamera = cameraEnabled,
                 onStarted = {
                     vm.engine.ready()
                     vm.engine.markRecording()
