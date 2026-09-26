@@ -3,7 +3,7 @@
  <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/><uses-permission android:name="android.permission.INTERNET"/>
- <application android:name=".DokStudioApplication" android:theme="@style/Theme.OBSDokStudio" android:label="@string/app_name" android:allowBackup="false" android:supportsRtl="true">
+ <application android:name=".DokStudioApplication" android:icon="@drawable/ic_obs_dok_launcher" android:roundIcon="@drawable/ic_obs_dok_launcher" android:theme="@style/Theme.OBSDokStudio" android:label="@string/app_name" android:allowBackup="false" android:supportsRtl="true">
   <activity android:name=".MainActivity" android:exported="true"><intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter></activity>
   <service android:name=".service.StudioForegroundService" android:exported="false" android:foregroundServiceType="camera|microphone|mediaProjection"/>
  </application>
