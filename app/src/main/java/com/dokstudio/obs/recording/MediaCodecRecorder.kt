@@ -30,7 +30,8 @@ class MediaCodecRecorder(private val context: Context) {
     private var muxerStarted = false
     private var outputUri: Uri? = null
     private var outputFd: android.os.ParcelFileDescriptor? = null
-    private val stopped = AtomicBoolean(false)\n    private var lastAudioPtsUs = 0L
+    private val stopped = AtomicBoolean(false)
+    private var lastAudioPtsUs = 0L
 
     fun start(config: Config): Surface {
         require(config.width > 0 && config.height > 0 && config.fps > 0 && config.bitrate > 0)
@@ -133,8 +134,11 @@ class MediaCodecRecorder(private val context: Context) {
         }
     }
 
-    fun outputUri(): Uri? = outputUri\n\n    fun queueAudio(pcm: ByteArray, ptsUs: Long) {
+    fun outputUri(): Uri? = outputUri
+
+    fun queueAudio(pcm: ByteArray, ptsUs: Long) {
         val codec = audioCodec ?: return
+        lastAudioPtsUs = maxOf(lastAudioPtsUs, ptsUs)
         var offset = 0
         while (offset < pcm.size) {
             val index = codec.dequeueInputBuffer(10_000)
