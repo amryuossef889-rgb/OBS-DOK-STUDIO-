@@ -9,6 +9,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.dokstudio.obs.capture.AudioCaptureManager
 import com.dokstudio.obs.capture.CameraCaptureManager
 import com.dokstudio.obs.capture.ScreenCaptureManager
+import com.dokstudio.obs.data.SourceEntity
 import com.dokstudio.obs.compositor.SceneCompositor
 import com.dokstudio.obs.mixer.AudioMixer
 
@@ -46,6 +47,7 @@ class RecordingController(
         cameraFrameShape: SceneCompositor.FrameShape = SceneCompositor.FrameShape.ROUNDED,
         cameraCornerRadius: Float = 0.14f,
         cameraBorderWidth: Float = 0.018f,
+        sceneSources: List<SourceEntity> = emptyList(),
         onStarted: () -> Unit,
         onError: (Throwable) -> Unit,
     ) {
@@ -64,11 +66,12 @@ class RecordingController(
             gpuCompositor.initialize(encoderSurface)
             gpuCompositor.setPreviewSurface(previewSurface)
 
-            val screenInput = gpuCompositor.createInputSurface(width, height)
-            gpuCompositor.updateLayer(screenInput, z = 0)
+            val screenEnabled = sceneSources.isEmpty() || sceneSources.any { it.type.equals("SCREEN", true) && it.visible }
+            val screenInput = if (screenEnabled) gpuCompositor.createInputSurface(width, height) else null
+            screenInput?.let { gpuCompositor.updateLayer(it, z = 0) }
 
             val screenCapture = ScreenCaptureManager(context)
-            screenCapture.startDirect(
+            if (screenInput != null) screenCapture.startDirect(
                 code = code,
                 data = data,
                 surface = screenInput.surface,
@@ -91,7 +94,8 @@ class RecordingController(
                 onError = onError,
             )
 
-            val cameraCapture = if (includeCamera) {
+            val cameraRequired = includeCamera && (sceneSources.isEmpty() || sceneSources.any { it.type.equals("CAMERA", true) && it.visible })
+            val cameraCapture = if (cameraRequired) {
                 val manager = CameraCaptureManager(context, lifecycleOwner)
                 val cameraInput = gpuCompositor.createInputSurface(width, height)
                 gpuCompositor.updateLayer(
@@ -113,7 +117,8 @@ class RecordingController(
                     width = width,
                     height = height,
                     lens = cameraLens,
-                    onError = onError,
+                    onStarted = onStarted,
+                    onError = { t -> stop(); onError(t) },
                 )
                 manager
             } else {
@@ -138,7 +143,7 @@ class RecordingController(
                 }
             }.also(handler::post)
 
-            onStarted()
+            if (!cameraRequired) onStarted()
         } catch (t: Throwable) {
             stop()
             onError(t)
