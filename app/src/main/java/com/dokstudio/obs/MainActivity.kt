@@ -5,6 +5,8 @@ import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dokstudio.obs.engine.StudioState
 import com.dokstudio.obs.permissions.PermissionCoordinator
@@ -34,9 +37,10 @@ class MainActivity : ComponentActivity() {
 
     private val capturePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-            val cameraGranted = result[android.Manifest.permission.CAMERA] == true
             val audioGranted = result[android.Manifest.permission.RECORD_AUDIO] == true
-            if (cameraGranted && audioGranted) requestProjectionConsent()
+            val notificationGranted =
+                Build.VERSION.SDK_INT < 33 || result[android.Manifest.permission.POST_NOTIFICATIONS] == true
+            if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
     private val projectionLauncher =
@@ -50,26 +54,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         recording = RecordingController(this)
-        setContent {
-            MaterialTheme {
-                StudioScreen(this, projectionLauncher)
-            }
-        }
+        setContent { MaterialTheme { StudioScreen(this, projectionLauncher) } }
     }
 
     fun requestCapturePermissions() {
         val missing = PermissionCoordinator(this).missingCapturePermissions()
-            .filter { it != android.Manifest.permission.POST_NOTIFICATIONS }
-        if (missing.isEmpty()) {
-            requestProjectionConsent()
-        } else {
-            capturePermissionLauncher.launch(missing.toTypedArray())
-        }
+        if (missing.isEmpty()) requestProjectionConsent()
+        else capturePermissionLauncher.launch(missing.toTypedArray())
     }
 
-    fun requestProjectionConsent() {
+    private fun requestProjectionConsent() {
         val manager = getSystemService(MediaProjectionManager::class.java)
         projectionLauncher.launch(manager.createScreenCaptureIntent())
+    }
+
+    fun setPreviewSurface(surface: android.view.Surface?) {
+        recording.setPreviewSurface(surface)
     }
 
     fun startRecording(
@@ -83,10 +83,9 @@ class MainActivity : ComponentActivity() {
             onError("Screen Capture consent is required before recording.")
             return
         }
-
         if (!PermissionCoordinator(this).capturePermissionsGranted()) {
             requestCapturePermissions()
-            onError("Camera and microphone permissions are required for capture sources.")
+            onError("Microphone permission is required for the recording audio track.")
             return
         }
 
@@ -94,11 +93,8 @@ class MainActivity : ComponentActivity() {
             vm.engine.prepare()
             val serviceIntent = Intent(this, StudioForegroundService::class.java)
                 .setAction(StudioForegroundService.ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
+            else startService(serviceIntent)
 
             recording.start(
                 code = code,
@@ -137,6 +133,11 @@ class MainActivity : ComponentActivity() {
                 .setAction(StudioForegroundService.ACTION_STOP),
         )
     }
+
+    override fun onDestroy() {
+        recording.stop()
+        super.onDestroy()
+    }
 }
 
 @Composable
@@ -157,19 +158,14 @@ private fun StudioScreen(
         )
     }
 
-    Column(
-        Modifier.fillMaxSize().background(Color(0xFF101114)).padding(16.dp),
-    ) {
+    Column(Modifier.fillMaxSize().background(Color(0xFF101114)).padding(16.dp)) {
         Text("OBS Dok Studio", color = Color.White, style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(12.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 enabled = studio == StudioState.IDLE,
-                onClick = {
-                    error = null
-                    activity.requestCapturePermissions()
-                },
+                onClick = { error = null; activity.requestCapturePermissions() },
             ) { Text("Screen Consent") }
 
             Button(
@@ -178,7 +174,7 @@ private fun StudioScreen(
             ) { Text("Record") }
 
             Button(
-                enabled = studio == StudioState.READY,
+                enabled = studio == StudioState.IDLE,
                 onClick = { showQualityDialog = true },
             ) { Text("Quality") }
 
@@ -190,6 +186,7 @@ private fun StudioScreen(
 
         Spacer(Modifier.height(8.dp))
         Text("State: " + studio, color = Color.White)
+        Text("Selected quality: " + selectedProfile.name, color = Color.White)
 
         error?.let {
             Spacer(Modifier.height(8.dp))
@@ -197,73 +194,83 @@ private fun StudioScreen(
         }
 
         Spacer(Modifier.height(12.dp))
-        Text("Selected quality: " + selectedProfile.name, color = Color.White)
-        Text("Encoder profiles", color = Color.White)
+        Box(
+            Modifier.fillMaxWidth().height(260.dp).background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { context ->
+                    SurfaceView(context).also { view ->
+                        view.holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(holder: SurfaceHolder) {
+                                activity.setPreviewSurface(holder.surface)
+                            }
+                            override fun surfaceChanged(
+                                holder: SurfaceHolder,
+                                format: Int,
+                                width: Int,
+                                height: Int,
+                            ) {
+                                activity.setPreviewSurface(holder.surface)
+                            }
+                            override fun surfaceDestroyed(holder: SurfaceHolder) {
+                                activity.setPreviewSurface(null)
+                            }
+                        })
+                    }
+                },
+                update = {},
+            )
+        }
+
+        Spacer(Modifier.height(12.dp))
+        Text("Encoder capabilities", color = Color.White)
         profiles.forEach { entry ->
             val profile = entry.first
             val supported = entry.second
             Text(
-                profile.name + " — " + profile.width + "x" + profile.height + " @ " +
-                    profile.fps + ": " + if (supported) "supported" else "unsupported",
+                profile.name + " — " + profile.width + "x" + profile.height + " @ " + profile.fps +
+                    ": " + if (supported) "supported" else "unsupported",
                 color = Color.LightGray,
             )
         }
 
         Spacer(Modifier.height(12.dp))
-        Box(
-            Modifier.fillMaxWidth().height(220.dp).background(Color(0xFF202226)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                "Preview pipeline will be rendered by the native compositor.",
-                color = Color.Gray,
-            )
-        }
-
-        scenes.firstOrNull()?.let { scene ->
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { vm.addSource(scene.id, "SCREEN") }) { Text("Screen Source") }
-                Button(onClick = { vm.addSource(scene.id, "CAMERA") }) { Text("Camera Source") }
-                Button(onClick = { vm.addSource(scene.id, "MICROPHONE") }) { Text("Mic Source") }
-            }
-        }
-
-
-        if (showQualityDialog) {
-            AlertDialog(
-                onDismissRequest = { showQualityDialog = false },
-                title = { Text("Recording quality") },
-                text = {
-                    Column {
-                        profiles.forEach { entry ->
-                            val profile = entry.first
-                            val supported = entry.second
-                            TextButton(
-                                enabled = supported,
-                                onClick = {
-                                    selectedProfile = profile
-                                    showQualityDialog = false
-                                },
-                            ) {
-                                Text(
-                                    profile.name + " — " + profile.width + "x" + profile.height + " @ " +
-                                        profile.fps + if (supported) "" else " (unsupported)",
-                                )
-                            }
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showQualityDialog = false }) { Text("Close") }
-                },
-            )
-        }
-
         LazyColumn {
             items(scenes) { scene ->
                 Text(scene.name, color = Color.White, modifier = Modifier.padding(8.dp))
             }
         }
+    }
+
+    if (showQualityDialog) {
+        AlertDialog(
+            onDismissRequest = { showQualityDialog = false },
+            title = { Text("Recording quality") },
+            text = {
+                Column {
+                    profiles.forEach { entry ->
+                        val profile = entry.first
+                        val supported = entry.second
+                        TextButton(
+                            enabled = supported,
+                            onClick = {
+                                selectedProfile = profile
+                                showQualityDialog = false
+                            },
+                        ) {
+                            Text(
+                                profile.name + " — " + profile.width + "x" + profile.height + " @ " + profile.fps +
+                                    if (supported) "" else " (unsupported)",
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showQualityDialog = false }) { Text("Close") }
+            },
+        )
     }
 }
