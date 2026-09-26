@@ -10,6 +10,7 @@ import com.dokstudio.obs.capture.AudioCaptureManager
 import com.dokstudio.obs.capture.CameraCaptureManager
 import com.dokstudio.obs.capture.ScreenCaptureManager
 import com.dokstudio.obs.compositor.SceneCompositor
+import com.dokstudio.obs.mixer.AudioMixer
 
 class RecordingController(
     private val context: Context,
@@ -20,6 +21,7 @@ class RecordingController(
     private var screen: ScreenCaptureManager? = null
     private var camera: CameraCaptureManager? = null
     private var audio: AudioCaptureManager? = null
+    private val mixer = AudioMixer()
     private val handler = Handler(Looper.getMainLooper())
     private var drainLoop: Runnable? = null
     @Volatile private var previewSurface: Surface? = null
@@ -71,9 +73,13 @@ class RecordingController(
                 },
             )
 
+            mixer.configure("microphone")
             val microphone = AudioCaptureManager()
             microphone.start(
-                onPcm = { pcm, ptsUs -> encoder.queueAudio(pcm, ptsUs) },
+                onPcm = { pcm, ptsUs ->
+                    mixer.process("microphone", pcm)
+                    encoder.queueAudio(pcm, ptsUs)
+                },
                 onLevel = {},
                 onError = onError,
             )
