@@ -12,6 +12,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -277,9 +278,9 @@ private fun StudioScreen(
                             Text(
                                 scene.name,
                                 color = if (vm.selectedScene.value == scene.id) Color.White else Color.LightGray,
-                                modifier = Modifier.fillMaxWidth().padding(7.dp).then(
-                                    Modifier
-                                ),
+                                modifier = Modifier.fillMaxWidth().padding(7.dp).clickable {
+                                    vm.selectScene(scene.id)
+                                },
                             )
                         }
                     }
