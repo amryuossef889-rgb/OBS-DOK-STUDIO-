@@ -1,4 +1,4 @@
-name: Android Build
+name: OBS Dok Studio Android Build
 
 on:
   push:
