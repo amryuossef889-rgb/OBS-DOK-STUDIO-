@@ -42,12 +42,18 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
                 val sceneId = UUID.randomUUID().toString()
                 val now = System.currentTimeMillis()
                 application.repository.save(SceneEntity(sceneId, "Main Scene", 0, now, now))
-                application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Screen", zIndex = 0))
+                application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Display Capture", zIndex = 0))
+                application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "MICROPHONE", "Microphone", zIndex = 1))
                 selectedScene.value = sceneId
             } else {
                 selectedScene.value = current.first().id
-                if (application.repository.sources(current.first().id).first().isEmpty()) {
-                    application.repository.save(SourceEntity(UUID.randomUUID().toString(), current.first().id, "SCREEN", "Screen", zIndex = 0))
+                val existingSources = application.repository.sources(current.first().id).first()
+                if (existingSources.isEmpty()) {
+                    application.repository.save(SourceEntity(UUID.randomUUID().toString(), current.first().id, "SCREEN", "Display Capture", zIndex = 0))
+                    application.repository.save(SourceEntity(UUID.randomUUID().toString(), current.first().id, "MICROPHONE", "Microphone", zIndex = 1))
+                } else if (existingSources.none { it.type.equals("MICROPHONE", true) }) {
+                    val z = existingSources.maxOfOrNull { it.zIndex }?.plus(1) ?: 0
+                    application.repository.save(SourceEntity(UUID.randomUUID().toString(), current.first().id, "MICROPHONE", "Microphone", zIndex = z))
                 }
             }
         }
