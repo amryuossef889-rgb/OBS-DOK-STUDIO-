@@ -189,9 +189,17 @@ class MainActivity : ComponentActivity() {
     }
 
     private var foregroundServiceBound = false
+    private var pendingForegroundReady: (() -> Unit)? = null
     private val foregroundServiceConnection = object : android.content.ServiceConnection {
         override fun onServiceConnected(name: android.content.ComponentName?, service: android.os.IBinder?) {
             foregroundServiceBound = true
+            val callback = pendingForegroundReady
+            if (callback != null) {
+                (service as? StudioForegroundService.LocalBinder)?.awaitReady {
+                    pendingForegroundReady = null
+                    callback()
+                }
+            }
         }
         override fun onServiceDisconnected(name: android.content.ComponentName?) {
             foregroundServiceBound = false
@@ -199,6 +207,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startForegroundCaptureService(intent: Intent, onReady: () -> Unit) {
+        pendingForegroundReady = onReady
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
         else startService(intent)
         bindService(
@@ -206,10 +215,6 @@ class MainActivity : ComponentActivity() {
             foregroundServiceConnection,
             BIND_AUTO_CREATE,
         )
-        StudioForegroundService.lastBinder?.awaitReady(onReady)
-            ?: android.os.Handler(mainLooper).postDelayed({
-                StudioForegroundService.lastBinder?.awaitReady(onReady)
-            }, 50L)
     }
 
     private fun stopForegroundCaptureService() {
@@ -605,7 +610,7 @@ private fun StudioScreen(
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showQualityDialog = false }) { Text("Close") },
+            confirmButton = { TextButton(onClick = { showQualityDialog = false }) { Text("Close") } },
         )
     }
 }
