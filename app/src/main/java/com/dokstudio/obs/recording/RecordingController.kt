@@ -99,7 +99,7 @@ class RecordingController(
                 onError = onError,
             )
 
-            val cameraRequired = includeCamera && (sceneSources.isEmpty() || sceneSources.any { it.type.equals("CAMERA", true) && it.visible })
+            val cameraRequired = includeCamera
             val cameraCapture = if (cameraRequired) {
                 val manager = CameraCaptureManager(context, lifecycleOwner)
                 camera = manager
