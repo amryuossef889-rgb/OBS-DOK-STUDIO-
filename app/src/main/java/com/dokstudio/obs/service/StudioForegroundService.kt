@@ -1,3 +1,63 @@
 package com.dokstudio.obs.service
-import android.app.*;import android.content.Intent;import android.os.Build;import androidx.core.app.NotificationCompat;import com.dokstudio.obs.R
-class StudioForegroundService:Service(){override fun onCreate(){super.onCreate();val ch=NotificationChannel("studio","Studio capture",NotificationManager.IMPORTANCE_LOW);getSystemService(NotificationManager::class.java).createNotificationChannel(ch);val n=NotificationCompat.Builder(this,"studio").setSmallIcon(android.R.drawable.ic_media_play).setContentTitle("OBS Dok Studio").setContentText("Capture session active").setOngoing(true).build();if(Build.VERSION.SDK_INT>=29)startForeground(42,n,android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)else startForeground(42,n)};override fun onStartCommand(i:Intent?,f:Int,s:Int)=START_NOT_STICKY;override fun onBind(i:Intent?)=null}
+
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Intent
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import com.dokstudio.obs.R
+
+class StudioForegroundService : Service() {
+    override fun onCreate() {
+        super.onCreate()
+
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                "Studio capture",
+                NotificationManager.IMPORTANCE_LOW,
+            ),
+        )
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setContentTitle("OBS Dok Studio")
+            .setContentText("Capture session active")
+            .setOngoing(true)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA or
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelfResult(startId)
+            }
+            ACTION_START, null -> Unit
+        }
+        return START_NOT_STICKY
+    }
+
+    override fun onBind(intent: Intent?) = null
+
+    companion object {
+        const val ACTION_START = "com.dokstudio.obs.action.START_CAPTURE"
+        const val ACTION_STOP = "com.dokstudio.obs.action.STOP_CAPTURE"
+        private const val CHANNEL_ID = "studio_capture"
+        private const val NOTIFICATION_ID = 42
+    }
+}
