@@ -6,7 +6,6 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
-import com.dokstudio.obs.R
 
 class StudioForegroundService : Service() {
     override fun onCreate() {
@@ -23,16 +22,16 @@ class StudioForegroundService : Service() {
             .setOngoing(true)
             .build()
 
-        startForeground(
-            NOTIFICATION_ID,
-            notification,
-            if (Build.VERSION.SDK_INT >= 29) {
+        if (Build.VERSION.SDK_INT >= 29) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
                 android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
-            } else {
-                0
-            },
-        )
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
