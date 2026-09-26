@@ -274,7 +274,13 @@ private fun StudioScreen(
                     }
                     LazyColumn {
                         items(scenes) { scene ->
-                            Text(scene.name, color = Color.White, modifier = Modifier.padding(7.dp))
+                            Text(
+                                scene.name,
+                                color = if (vm.selectedScene.value == scene.id) Color.White else Color.LightGray,
+                                modifier = Modifier.fillMaxWidth().padding(7.dp).then(
+                                    Modifier
+                                ),
+                            )
                         }
                     }
                 }
