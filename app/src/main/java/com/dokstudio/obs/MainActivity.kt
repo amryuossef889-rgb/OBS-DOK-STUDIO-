@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
                 cameraFrameShape = cameraFrameShape,
                 cameraCornerRadius = cameraCornerRadius,
                 cameraBorderWidth = cameraBorderWidth,
+                sceneSources = vm.selectedSources.value,
                 onStarted = {
                     vm.engine.ready()
                     vm.engine.markRecording()
