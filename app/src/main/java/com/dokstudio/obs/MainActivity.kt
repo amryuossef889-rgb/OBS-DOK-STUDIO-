@@ -23,6 +23,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.dokstudio.obs.engine.StudioState
 import com.dokstudio.obs.permissions.PermissionCoordinator
 import com.dokstudio.obs.recording.EncoderCapabilities
+import com.dokstudio.obs.recording.QualityProfile
 import com.dokstudio.obs.recording.RecordingController
 import com.dokstudio.obs.service.StudioForegroundService
 
@@ -60,6 +61,7 @@ class MainActivity : ComponentActivity() {
 
     fun startRecording(
         vm: com.dokstudio.obs.ui.StudioViewModel,
+        profile: QualityProfile,
         onError: (String) -> Unit,
     ) {
         val code = projectionResult
@@ -87,10 +89,10 @@ class MainActivity : ComponentActivity() {
             recording.start(
                 code = code,
                 data = data,
-                width = 1280,
-                height = 720,
-                fps = 30,
-                bitrate = 6_000_000,
+                width = profile.width,
+                height = profile.height,
+                fps = profile.fps,
+                bitrate = profile.bitrate,
                 onStarted = { vm.engine.markRecording() },
                 onError = {
                     stopForegroundCaptureService()
@@ -129,6 +131,14 @@ private fun StudioScreen(
     val scenes by vm.scenes.collectAsState()
     val studio by vm.engine.studio.collectAsState()
     var error by remember { mutableStateOf<String?>(null) }
+    var showQualityDialog by remember { mutableStateOf(false) }
+    val profiles = remember { EncoderCapabilities.profiles() }
+    var selectedProfile by remember {
+        mutableStateOf(
+            profiles.firstOrNull { it.second }?.first
+                ?: QualityProfile("Balanced", 1280, 720, 30, 6_000_000),
+        )
+    }
 
     Column(
         Modifier.fillMaxSize().background(Color(0xFF101114)).padding(16.dp),
@@ -157,8 +167,13 @@ private fun StudioScreen(
 
             Button(
                 enabled = studio == StudioState.READY,
-                onClick = { activity.startRecording(vm) { error = it } },
+                onClick = { activity.startRecording(vm, selectedProfile) { error = it } },
             ) { Text("Record") }
+
+            Button(
+                enabled = studio == StudioState.READY,
+                onClick = { showQualityDialog = true },
+            ) { Text("Quality") }
 
             Button(
                 enabled = studio == StudioState.RECORDING,
@@ -175,8 +190,9 @@ private fun StudioScreen(
         }
 
         Spacer(Modifier.height(12.dp))
+        Text("Selected quality: " + selectedProfile.name, color = Color.White)
         Text("Encoder profiles", color = Color.White)
-        EncoderCapabilities.profiles().forEach { entry ->
+        profiles.forEach { entry ->
             val profile = entry.first
             val supported = entry.second
             Text(
@@ -204,6 +220,37 @@ private fun StudioScreen(
                 Button(onClick = { vm.addSource(scene.id, "CAMERA") }) { Text("Camera Source") }
                 Button(onClick = { vm.addSource(scene.id, "MICROPHONE") }) { Text("Mic Source") }
             }
+        }
+
+
+        if (showQualityDialog) {
+            AlertDialog(
+                onDismissRequest = { showQualityDialog = false },
+                title = { Text("Recording quality") },
+                text = {
+                    Column {
+                        profiles.forEach { entry ->
+                            val profile = entry.first
+                            val supported = entry.second
+                            TextButton(
+                                enabled = supported,
+                                onClick = {
+                                    selectedProfile = profile
+                                    showQualityDialog = false
+                                },
+                            ) {
+                                Text(
+                                    profile.name + " — " + profile.width + "x" + profile.height + " @ " +
+                                        profile.fps + if (supported) "" else " (unsupported)",
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showQualityDialog = false }) { Text("Close") }
+                },
+            )
         }
 
         LazyColumn {
