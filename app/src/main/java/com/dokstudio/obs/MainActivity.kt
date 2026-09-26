@@ -45,7 +45,10 @@ class MainActivity : ComponentActivity() {
             val audioGranted = result[android.Manifest.permission.RECORD_AUDIO] == true
             val notificationGranted =
                 Build.VERSION.SDK_INT < 33 || result[android.Manifest.permission.POST_NOTIFICATIONS] == true
-            if (audioGranted && notificationGranted) requestProjectionConsent()
+            val cameraGranted = android.Manifest.permission.CAMERA !in result ||
+                result[android.Manifest.permission.CAMERA] == true
+            cameraEnabled = cameraGranted && PermissionCoordinator(this).cameraPermissionGranted()
+            if (audioGranted && notificationGranted && cameraGranted) requestProjectionConsent()
         }
 
     private val cameraPermissionLauncher =
@@ -83,10 +86,14 @@ class MainActivity : ComponentActivity() {
         else capturePermissionLauncher.launch(missing.toTypedArray())
     }
 
-    fun beginRecording(start: () -> Unit) {
+    fun beginRecording(needsCamera: Boolean, start: () -> Unit) {
         pendingStart = start
-        val missing = PermissionCoordinator(this).missingCapturePermissions()
-        if (missing.isNotEmpty()) { capturePermissionLauncher.launch(missing.toTypedArray()); return }
+        val missing = PermissionCoordinator(this).missingCapturePermissions().toMutableList()
+        if (needsCamera && PermissionCoordinator(this).missingCameraPermission()) {
+            missing += android.Manifest.permission.CAMERA
+        }
+        if (missing.isNotEmpty()) { capturePermissionLauncher.launch(missing.distinct().toTypedArray()); return }
+        if (needsCamera) cameraEnabled = true
         requestProjectionConsent()
     }
 
@@ -149,7 +156,8 @@ class MainActivity : ComponentActivity() {
                 height = profile.height,
                 fps = profile.fps,
                 bitrate = profile.bitrate,
-                includeCamera = cameraEnabled,
+                includeCamera = vm.selectedSources.value.any { it.type.equals("CAMERA", true) && it.visible },
+                includeMicrophone = vm.selectedSources.value.any { it.type.equals("MICROPHONE", true) && it.visible },
                 cameraLens = cameraLens,
                 cameraScale = cameraScale,
                 cameraX = cameraX,
@@ -378,12 +386,41 @@ private fun StudioScreen(
                     }
                 }
                 Row(Modifier.fillMaxWidth().height(46.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(enabled = !isBusy && vm.selectedScene.value != null,
-                        onClick = { vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") } },
-                        contentPadding = PaddingValues(6.dp)) { Text("+", fontSize = MaterialTheme.typography.titleLarge.fontSize, color = Color.White) }
-                    TextButton(enabled = !isBusy && vm.selectedScene.value != null,
-                        onClick = { vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") } },
-                        contentPadding = PaddingValues(6.dp)) { Text("▣", color = Color.White) }
+                    var showSourceMenu by remember { mutableStateOf(false) }
+                    Box {
+                        TextButton(
+                            enabled = !isBusy && vm.selectedScene.value != null,
+                            onClick = { showSourceMenu = true },
+                            contentPadding = PaddingValues(horizontal = 10.dp),
+                        ) { Text("+", fontSize = MaterialTheme.typography.titleLarge.fontSize, color = Color.White) }
+
+                        DropdownMenu(
+                            expanded = showSourceMenu,
+                            onDismissRequest = { showSourceMenu = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Display Capture") },
+                                onClick = {
+                                    vm.selectedScene.value?.let { vm.addSource(it, "SCREEN") }
+                                    showSourceMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Camera") },
+                                onClick = {
+                                    vm.selectedScene.value?.let { vm.addSource(it, "CAMERA") }
+                                    showSourceMenu = false
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Microphone") },
+                                onClick = {
+                                    vm.selectedScene.value?.let { vm.addSource(it, "MICROPHONE") }
+                                    showSourceMenu = false
+                                },
+                            )
+                        }
+                    }
                     Spacer(Modifier.weight(1f))
                     Text("⚙", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 10.dp))
                     Text("▲", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
@@ -434,7 +471,8 @@ private fun StudioScreen(
                     }
                     Button(enabled = !isBusy, onClick = {
                         error = null
-                        activity.beginRecording {
+                        val sceneNeedsCamera = sources.any { it.type.equals("CAMERA", true) && it.visible }
+                        activity.beginRecording(sceneNeedsCamera) {
                             activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it }
                         }
                     }, modifier = Modifier.fillMaxWidth().height(42.dp),
