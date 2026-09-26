@@ -4,7 +4,8 @@ import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.Bundle\nimport android.view.SurfaceHolder
+import android.os.Bundle
+import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
@@ -27,7 +28,9 @@ import com.dokstudio.obs.permissions.PermissionCoordinator
 import com.dokstudio.obs.recording.EncoderCapabilities
 import com.dokstudio.obs.recording.QualityProfile
 import com.dokstudio.obs.recording.RecordingController
-import com.dokstudio.obs.service.StudioForegroundService\nimport com.dokstudio.obs.data.RecordingEntity\nimport java.util.UUID
+import com.dokstudio.obs.service.StudioForegroundService
+import com.dokstudio.obs.data.RecordingEntity
+import java.util.UUID
 
 class MainActivity : ComponentActivity() {
     private lateinit var recording: RecordingController
@@ -42,7 +45,15 @@ class MainActivity : ComponentActivity() {
             if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
-    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled by mutableStateOf(false)\n    private var recordingStartedAt = 0L\n\n    private val projectionLauncher =
+    private val cameraPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            cameraEnabled = granted
+        }
+
+    private var cameraEnabled by mutableStateOf(false)
+    private var recordingStartedAt = 0L
+
+    private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
@@ -52,7 +63,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        recording = RecordingController(this)
+        recording = RecordingController(this, this)
         setContent { MaterialTheme { StudioScreen(this, projectionLauncher) } }
     }
 
@@ -67,7 +78,17 @@ class MainActivity : ComponentActivity() {
         projectionLauncher.launch(manager.createScreenCaptureIntent())
     }
 
-    fun toggleCamera() {\n        if (PermissionCoordinator(this).missingCameraPermission()) {\n            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)\n        } else {\n            cameraEnabled = !cameraEnabled\n        }\n    }\n\n    fun isCameraEnabled(): Boolean = cameraEnabled\n\n    fun setPreviewSurface(surface: android.view.Surface?) {
+    fun toggleCamera() {
+        if (PermissionCoordinator(this).missingCameraPermission()) {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        } else {
+            cameraEnabled = !cameraEnabled
+        }
+    }
+
+    fun isCameraEnabled(): Boolean = cameraEnabled
+
+    fun setPreviewSurface(surface: android.view.Surface?) {
         recording.setPreviewSurface(surface)
     }
 
@@ -91,7 +112,8 @@ class MainActivity : ComponentActivity() {
         try {
             vm.engine.prepare()
             val serviceIntent = Intent(this, StudioForegroundService::class.java)
-                .setAction(StudioForegroundService.ACTION_START)\n                .putExtra(StudioForegroundService.EXTRA_CAMERA, cameraEnabled)
+                .setAction(StudioForegroundService.ACTION_START)
+                .putExtra(StudioForegroundService.EXTRA_CAMERA, cameraEnabled)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(serviceIntent)
             else startService(serviceIntent)
 
@@ -106,7 +128,7 @@ class MainActivity : ComponentActivity() {
                     vm.engine.ready()
                     vm.engine.markRecording()
                 },
-                onStopped = {},\n                onError = {
+                onError = {
                     stopForegroundCaptureService()
                     vm.engine.idle()
                     onError(it.message ?: "Recording failed")
@@ -185,7 +207,14 @@ private fun StudioScreen(
 
         Spacer(Modifier.height(8.dp))
         Text("State: " + studio, color = Color.White)
-        Text("Selected quality: " + selectedProfile.name, color = Color.White)\n\n        OutlinedButton(\n            enabled = studio == StudioState.IDLE,\n            onClick = { activity.toggleCamera() },\n        ) {\n            Text(if (activity.isCameraEnabled()) "Camera: ON" else "Camera: OFF")\n        }
+        Text("Selected quality: " + selectedProfile.name, color = Color.White)
+
+        OutlinedButton(
+            enabled = studio == StudioState.IDLE,
+            onClick = { activity.toggleCamera() },
+        ) {
+            Text(if (activity.isCameraEnabled()) "Camera: ON" else "Camera: OFF")
+        }
 
         error?.let {
             Spacer(Modifier.height(8.dp))
