@@ -92,7 +92,7 @@ class MainActivity : ComponentActivity() {
 
     fun isCameraEnabled(): Boolean = cameraEnabled
 
-    fun setCameraLens(lens: CameraCaptureManager.Lens) { cameraLens = lens }
+    fun setCameraLensSelection(lens: CameraCaptureManager.Lens) { cameraLens = lens }
     fun cameraLens(): CameraCaptureManager.Lens = cameraLens
 
     fun setPreviewSurface(surface: android.view.Surface?) {
@@ -361,7 +361,7 @@ private fun StudioScreen(
                             DropdownMenuItem(
                                 text = { Text("Front Camera") },
                                 onClick = {
-                                    activity.setCameraLens(CameraCaptureManager.Lens.FRONT)
+                                    activity.setCameraLensSelection(CameraCaptureManager.Lens.FRONT)
                                     if (!activity.isCameraEnabled()) activity.toggleCamera()
                                     showCameraMenu = false
                                 },
@@ -369,7 +369,7 @@ private fun StudioScreen(
                             DropdownMenuItem(
                                 text = { Text("Back Camera") },
                                 onClick = {
-                                    activity.setCameraLens(CameraCaptureManager.Lens.BACK)
+                                    activity.setCameraLensSelection(CameraCaptureManager.Lens.BACK)
                                     if (!activity.isCameraEnabled()) activity.toggleCamera()
                                     showCameraMenu = false
                                 },
