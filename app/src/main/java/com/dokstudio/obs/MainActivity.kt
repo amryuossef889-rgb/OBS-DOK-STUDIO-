@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
 
     private var cameraEnabled by mutableStateOf(false)
     private var cameraLens by mutableStateOf(CameraCaptureManager.Lens.BACK)
+    private var pendingStart: (() -> Unit)? = null
     private var recordingStartedAt = 0L
 
     private val projectionLauncher =
@@ -75,6 +76,15 @@ class MainActivity : ComponentActivity() {
         val missing = PermissionCoordinator(this).missingCapturePermissions()
         if (missing.isEmpty()) requestProjectionConsent()
         else capturePermissionLauncher.launch(missing.toTypedArray())
+    }
+
+    fun beginRecording(start: () -> Unit) {
+        pendingStart = start
+        val missing = PermissionCoordinator(this).missingCapturePermissions()
+        if (missing.isNotEmpty()) { capturePermissionLauncher.launch(missing.toTypedArray()); return }
+        if (projectionResult == null || projectionData == null) { requestProjectionConsent(); return }
+        pendingStart = null
+        start()
     }
 
     private fun requestProjectionConsent() {
@@ -226,7 +236,7 @@ private fun StudioScreen(
             Spacer(Modifier.width(10.dp))
             Button(
                 enabled = studio == StudioState.IDLE,
-                onClick = { error = null; activity.requestCapturePermissions() },
+                onClick = { error = null; activity.beginRecording { activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it } } },
             ) { Text("Start Capture") }
             Spacer(Modifier.width(8.dp))
             Button(
@@ -328,12 +338,7 @@ private fun StudioScreen(
                     Text("Controls", style = MaterialTheme.typography.titleMedium)
                     Button(
                         enabled = studio == StudioState.IDLE,
-                        onClick = {
-                            activity.startRecording(
-                                vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY,
-                                cornerRadius, borderWidth
-                            ) { error = it }
-                        },
+                        onClick = { activity.beginRecording { activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it } } },
                         modifier = Modifier.fillMaxWidth(),
                     ) { Text("Start Recording") }
 
@@ -423,12 +428,11 @@ private fun StudioScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text("Size", color = Color.White)
-            Slider(
-                value = cameraScale,
-                onValueChange = { cameraScale = it },
-                valueRange = 0.15f..0.7f,
-                modifier = Modifier.width(150.dp),
-            )
+            Slider(value = cameraScale, onValueChange = { cameraScale = it }, valueRange = 0.15f..0.7f, modifier = Modifier.width(110.dp))
+            Text("X", color = Color.White)
+            Slider(value = cameraX, onValueChange = { cameraX = it }, valueRange = -0.85f..0.85f, modifier = Modifier.width(100.dp))
+            Text("Y", color = Color.White)
+            Slider(value = cameraY, onValueChange = { cameraY = it }, valueRange = -0.85f..0.85f, modifier = Modifier.width(100.dp))
             Text("Corner", color = Color.White)
             Slider(
                 value = cornerRadius,
