@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
-    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            if (!granted) {\n                cameraEnabled = false\n            }\n        }\n\n    private var cameraEnabled = false\n\n    private val projectionLauncher =
+    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled = false\n\n    private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
@@ -186,7 +186,7 @@ private fun StudioScreen(
 
         Spacer(Modifier.height(8.dp))
         Text("State: " + studio, color = Color.White)
-        Text("Selected quality: " + selectedProfile.name, color = Color.White)
+        Text("Selected quality: " + selectedProfile.name, color = Color.White)\n\n        OutlinedButton(\n            enabled = studio == StudioState.IDLE,\n            onClick = { activity.toggleCamera() },\n        ) {\n            Text(if (activity.isCameraEnabled()) "Camera: ON" else "Camera: OFF")\n        }
 
         error?.let {
             Spacer(Modifier.height(8.dp))
