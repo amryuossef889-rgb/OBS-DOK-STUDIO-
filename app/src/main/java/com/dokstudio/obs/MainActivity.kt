@@ -4,8 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.os.Build
-import android.os.Bundle\nimport android.provider.OpenableColumns
-import android.view.SurfaceHolder
+import android.os.Bundle\nimport android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.ActivityResultLauncher
