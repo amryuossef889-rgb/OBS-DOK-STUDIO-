@@ -70,19 +70,31 @@ class StudioViewModel(app: Application) : AndroidViewModel(app) {
             val sceneId = UUID.randomUUID().toString()
             val now = System.currentTimeMillis()
             application.repository.save(SceneEntity(sceneId, "Scene " + (n + 1), n, now, now))
-            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Screen", zIndex = 0))
+            // Every newly-created scene owns its own independent source set.
+            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "SCREEN", "Display Capture", zIndex = 0))
+            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "CAMERA", "Camera", zIndex = 1))
+            application.repository.save(SourceEntity(UUID.randomUUID().toString(), sceneId, "MICROPHONE", "Microphone", zIndex = 2))
+            selectedScene.value = sceneId
         }
     }
 
     fun addSource(scene: String, type: String) {
         viewModelScope.launch {
-            val z = application.repository.sources(scene).first().maxOfOrNull { it.zIndex }?.plus(1) ?: 0
+            val current = application.repository.sources(scene).first()
+            if (current.any { it.type.equals(type, true) }) return@launch
+            val z = current.maxOfOrNull { it.zIndex }?.plus(1) ?: 0
+            val displayName = when (type.uppercase()) {
+                "SCREEN" -> "Display Capture"
+                "CAMERA" -> "Camera"
+                "MICROPHONE" -> "Microphone"
+                else -> type.replaceFirstChar { it.uppercase() }
+            }
             application.repository.save(
                 SourceEntity(
                     UUID.randomUUID().toString(),
                     scene,
-                    type,
-                    type.replaceFirstChar { it.uppercase() },
+                    type.uppercase(),
+                    displayName,
                     zIndex = z,
                 ),
             )
