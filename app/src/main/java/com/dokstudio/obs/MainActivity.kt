@@ -30,6 +30,7 @@ import com.dokstudio.obs.recording.EncoderCapabilities
 import com.dokstudio.obs.recording.QualityProfile
 import com.dokstudio.obs.recording.RecordingController
 import com.dokstudio.obs.capture.CameraCaptureManager
+import com.dokstudio.obs.data.SourceEntity
 import com.dokstudio.obs.compositor.SceneCompositor
 import com.dokstudio.obs.service.StudioForegroundService
 import com.dokstudio.obs.data.RecordingEntity
@@ -82,9 +83,7 @@ class MainActivity : ComponentActivity() {
         pendingStart = start
         val missing = PermissionCoordinator(this).missingCapturePermissions()
         if (missing.isNotEmpty()) { capturePermissionLauncher.launch(missing.toTypedArray()); return }
-        if (projectionResult == null || projectionData == null) { requestProjectionConsent(); return }
-        pendingStart = null
-        start()
+        requestProjectionConsent()
     }
 
     private fun requestProjectionConsent() {
