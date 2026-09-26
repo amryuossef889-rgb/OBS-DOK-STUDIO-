@@ -5,14 +5,20 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.view.Surface
+import androidx.lifecycle.LifecycleOwner
 import com.dokstudio.obs.capture.AudioCaptureManager
+import com.dokstudio.obs.capture.CameraCaptureManager
 import com.dokstudio.obs.capture.ScreenCaptureManager
 import com.dokstudio.obs.compositor.SceneCompositor
 
-class RecordingController(private val context: Context) {
+class RecordingController(
+    private val context: Context,
+    private val lifecycleOwner: LifecycleOwner,
+) {
     private var recorder: MediaCodecRecorder? = null
     private var compositor: SceneCompositor? = null
     private var screen: ScreenCaptureManager? = null
+    private var camera: CameraCaptureManager? = null
     private var audio: AudioCaptureManager? = null
     private val handler = Handler(Looper.getMainLooper())
     private var drainLoop: Runnable? = null
@@ -30,6 +36,7 @@ class RecordingController(private val context: Context) {
         height: Int,
         fps: Int,
         bitrate: Int,
+        includeCamera: Boolean,
         onStarted: () -> Unit,
         onError: (Throwable) -> Unit,
     ) {
@@ -47,7 +54,9 @@ class RecordingController(private val context: Context) {
             val gpuCompositor = SceneCompositor()
             gpuCompositor.initialize(encoderSurface)
             gpuCompositor.setPreviewSurface(previewSurface)
+
             val screenInput = gpuCompositor.createInputSurface()
+            gpuCompositor.updateLayer(screenInput, z = 0)
 
             val screenCapture = ScreenCaptureManager(context)
             screenCapture.startDirect(
@@ -69,9 +78,32 @@ class RecordingController(private val context: Context) {
                 onError = onError,
             )
 
+            val cameraCapture = if (includeCamera) {
+                val manager = CameraCaptureManager(context, lifecycleOwner)
+                val cameraInput = gpuCompositor.createInputSurface()
+                gpuCompositor.updateLayer(
+                    cameraInput,
+                    z = 1,
+                    scaleX = 0.32f,
+                    scaleY = 0.32f,
+                    translateX = 0.62f,
+                    translateY = -0.62f,
+                )
+                manager.start(
+                    target = cameraInput.surface,
+                    width = width,
+                    height = height,
+                    onError = onError,
+                )
+                manager
+            } else {
+                null
+            }
+
             recorder = encoder
             compositor = gpuCompositor
             screen = screenCapture
+            camera = cameraCapture
             audio = microphone
 
             drainLoop = object : Runnable {
@@ -98,6 +130,8 @@ class RecordingController(private val context: Context) {
         drainLoop = null
         screen?.stop()
         screen = null
+        camera?.stop()
+        camera = null
         audio?.stop()
         audio = null
         compositor?.release()
