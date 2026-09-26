@@ -1,9 +1,280 @@
 package com.dokstudio.obs.recording
-import android.content.*;import android.media.*;import android.net.Uri;import android.os.Build;import android.provider.MediaStore;import android.view.Surface;import java.util.concurrent.atomic.AtomicBoolean
-class MediaCodecRecorder(private val c:Context){data class Config(val width:Int,val height:Int,val fps:Int,val bitrate:Int,val sampleRate:Int=48000,val audioBitrate:Int=128000);private var v:MediaCodec?=null;private var a:MediaCodec?=null;private var m:MediaMuxer?=null;private var vt=-1;private var at=-1;private var started=false;private val stopped=AtomicBoolean(false);private var uri:Uri?=null;private var pfd:android.os.ParcelFileDescriptor?=null
- fun start(x:Config):Surface{val cv=ContentValues().apply{put(MediaStore.Video.Media.DISPLAY_NAME,"OBS_Dok_"+System.currentTimeMillis()+".mp4");put(MediaStore.Video.Media.MIME_TYPE,"video/mp4");if(Build.VERSION.SDK_INT>=29)put(MediaStore.Video.Media.RELATIVE_PATH,"Movies/OBS Dok Studio")};uri=c.contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI,cv)?:error("MediaStore insert failed");pfd=c.contentResolver.openFileDescriptor(uri!!,"w")?:error("Cannot open output");m=MediaMuxer(pfd!!.fileDescriptor,MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4);v=MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC);v!!.configure(MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC,x.width,x.height).apply{setInteger(MediaFormat.KEY_COLOR_FORMAT,MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);setInteger(MediaFormat.KEY_BIT_RATE,x.bitrate);setInteger(MediaFormat.KEY_FRAME_RATE,x.fps);setInteger(MediaFormat.KEY_I_FRAME_INTERVAL,2)},null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);a=MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC);a!!.configure(MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC,x.sampleRate,1).apply{setInteger(MediaFormat.KEY_AAC_PROFILE,MediaCodecInfo.CodecProfileLevel.AACObjectLC);setInteger(MediaFormat.KEY_BIT_RATE,x.audioBitrate)},null,null,MediaCodec.CONFIGURE_FLAG_ENCODE);val s=v!!.createInputSurface();v!!.start();a!!.start();return s}
- fun drain(){val cdc=v?:return;val i=MediaCodec.BufferInfo();while(true){val n=cdc.dequeueOutputBuffer(i,0);when{n==MediaCodec.INFO_OUTPUT_FORMAT_CHANGED->{vt=m!!.addTrack(cdc.outputFormat);startMuxer()};n>=0->{val b=cdc.getOutputBuffer(n);if(b!=null&&i.size>0&&started&&vt>=0){b.position(i.offset);b.limit(i.offset+i.size);m!!.writeSampleData(vt,b,i)};cdc.releaseOutputBuffer(n,false)};else->return}}}
- fun audio(pcm:ByteArray,pts:Long){val cdc=a?:return;val n=cdc.dequeueInputBuffer(10000);if(n>=0){val b=cdc.getInputBuffer(n)!!;b.clear();b.put(pcm);cdc.queueInputBuffer(n,0,pcm.size,pts,0)};val i=MediaCodec.BufferInfo();while(true){val x=cdc.dequeueOutputBuffer(i,0);when{x==MediaCodec.INFO_OUTPUT_FORMAT_CHANGED->{at=m!!.addTrack(cdc.outputFormat);startMuxer()};x>=0->{val b=cdc.getOutputBuffer(x);if(b!=null&&i.size>0&&started&&at>=0){b.position(i.offset);b.limit(i.offset+i.size);m!!.writeSampleData(at,b,i)};cdc.releaseOutputBuffer(x,false)};else->return}}}
- private fun startMuxer(){if(!started&&vt>=0&&at>=0)try{m!!.start();started=true}catch(_:Throwable){}}
- fun stop():Uri?{if(!stopped.compareAndSet(false,true))return uri;try{v?.signalEndOfInputStream();drain();a?.stop();v?.stop();a?.release();v?.release();if(started)m?.stop();m?.release()}finally{pfd?.close()};return uri}
+
+import android.content.ContentValues
+import android.content.Context
+import android.media.MediaCodec
+import android.media.MediaCodecInfo
+import android.media.MediaFormat
+import android.media.MediaMuxer
+import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import android.view.Surface
+import java.util.concurrent.atomic.AtomicBoolean
+
+class MediaCodecRecorder(private val context: Context) {
+    data class Config(
+        val width: Int,
+        val height: Int,
+        val fps: Int,
+        val bitrate: Int,
+        val sampleRate: Int = 48_000,
+        val audioBitrate: Int = 128_000,
+    )
+
+    private var videoCodec: MediaCodec? = null
+    private var audioCodec: MediaCodec? = null
+    private var muxer: MediaMuxer? = null
+    private var videoTrack = -1
+    private var audioTrack = -1
+    private var muxerStarted = false
+    private var outputUri: Uri? = null
+    private var outputFd: android.os.ParcelFileDescriptor? = null
+    private val stopped = AtomicBoolean(false)
+
+    fun start(config: Config): Surface {
+        require(config.width > 0 && config.height > 0 && config.fps > 0 && config.bitrate > 0)
+
+        val values = ContentValues().apply {
+            put(MediaStore.Video.Media.DISPLAY_NAME, "OBS_Dok_${System.currentTimeMillis()}.mp4")
+            put(MediaStore.Video.Media.MIME_TYPE, "video/mp4")
+            if (Build.VERSION.SDK_INT >= 29) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/OBS Dok Studio")
+                put(MediaStore.Video.Media.IS_PENDING, 1)
+            }
+        }
+
+        try {
+            outputUri = context.contentResolver.insert(
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
+                values,
+            ) ?: error("MediaStore insert failed")
+
+            outputFd = context.contentResolver.openFileDescriptor(outputUri!!, "rw")
+                ?: error("Cannot open output")
+
+            muxer = MediaMuxer(
+                outputFd!!.fileDescriptor,
+                MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4,
+            )
+
+            val videoFormat = MediaFormat.createVideoFormat(
+                MediaFormat.MIMETYPE_VIDEO_AVC,
+                config.width,
+                config.height,
+            ).apply {
+                setInteger(
+                    MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface,
+                )
+                setInteger(MediaFormat.KEY_BIT_RATE, config.bitrate)
+                setInteger(MediaFormat.KEY_FRAME_RATE, config.fps)
+                setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+            }
+
+            videoCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC).also {
+                it.configure(videoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            }
+
+            val audioFormat = MediaFormat.createAudioFormat(
+                MediaFormat.MIMETYPE_AUDIO_AAC,
+                config.sampleRate,
+                1,
+            ).apply {
+                setInteger(
+                    MediaFormat.KEY_AAC_PROFILE,
+                    MediaCodecInfo.CodecProfileLevel.AACObjectLC,
+                )
+                setInteger(MediaFormat.KEY_BIT_RATE, config.audioBitrate)
+            }
+
+            audioCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_AUDIO_AAC).also {
+                it.configure(audioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            }
+
+            val inputSurface = videoCodec!!.createInputSurface()
+            videoCodec!!.start()
+            audioCodec!!.start()
+            return inputSurface
+        } catch (t: Throwable) {
+            cleanupFailedStart()
+            throw t
+        }
+    }
+
+    fun drainVideo(timeoutUs: Long = 0): Boolean {
+        val codec = videoCodec ?: return false
+        val info = MediaCodec.BufferInfo()
+        var didWork = false
+
+        while (true) {
+            when (val index = codec.dequeueOutputBuffer(info, timeoutUs)) {
+                MediaCodec.INFO_TRY_AGAIN_LATER -> return didWork
+                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    check(videoTrack < 0) { "Video output format changed twice" }
+                    videoTrack = muxer!!.addTrack(codec.outputFormat)
+                    startMuxerIfReady()
+                    didWork = true
+                }
+                MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED -> Unit
+                else -> {
+                    if (index >= 0) {
+                        val buffer = codec.getOutputBuffer(index)
+                        if (buffer != null && info.size > 0 && muxerStarted && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                            buffer.position(info.offset)
+                            buffer.limit(info.offset + info.size)
+                            muxer!!.writeSampleData(videoTrack, buffer, info)
+                        }
+                        codec.releaseOutputBuffer(index, false)
+                        didWork = true
+                    }
+                }
+            }
+        }
+    }
+
+    fun queueAudio(pcm: ByteArray, ptsUs: Long) {
+        val codec = audioCodec ?: return
+        var offset = 0
+        while (offset < pcm.size) {
+            val index = codec.dequeueInputBuffer(10_000)
+            if (index < 0) return
+            val buffer = codec.getInputBuffer(index) ?: return
+            buffer.clear()
+            val count = minOf(buffer.remaining(), pcm.size - offset)
+            buffer.put(pcm, offset, count)
+            codec.queueInputBuffer(index, 0, count, ptsUs, 0)
+            offset += count
+        }
+        drainAudio()
+    }
+
+    private fun drainAudio() {
+        val codec = audioCodec ?: return
+        val info = MediaCodec.BufferInfo()
+
+        while (true) {
+            when (val index = codec.dequeueOutputBuffer(info, 0)) {
+                MediaCodec.INFO_TRY_AGAIN_LATER -> return
+                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    check(audioTrack < 0) { "Audio output format changed twice" }
+                    audioTrack = muxer!!.addTrack(codec.outputFormat)
+                    startMuxerIfReady()
+                }
+                MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED -> Unit
+                else -> if (index >= 0) {
+                    val buffer = codec.getOutputBuffer(index)
+                    if (buffer != null && info.size > 0 && muxerStarted && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                        buffer.position(info.offset)
+                        buffer.limit(info.offset + info.size)
+                        muxer!!.writeSampleData(audioTrack, buffer, info)
+                    }
+                    codec.releaseOutputBuffer(index, false)
+                }
+            }
+        }
+    }
+
+    private fun startMuxerIfReady() {
+        if (!muxerStarted && videoTrack >= 0 && audioTrack >= 0) {
+            muxer!!.start()
+            muxerStarted = true
+        }
+    }
+
+    fun stop(): Uri? {
+        if (!stopped.compareAndSet(false, true)) return outputUri
+
+        try {
+            videoCodec?.signalEndOfInputStream()
+            drainUntilEnd(videoCodec)
+            audioCodec?.let { codec ->
+                val index = codec.dequeueInputBuffer(10_000)
+                if (index >= 0) {
+                    codec.queueInputBuffer(
+                        index,
+                        0,
+                        0,
+                        System.nanoTime() / 1_000,
+                        MediaCodec.BUFFER_FLAG_END_OF_STREAM,
+                    )
+                }
+                drainUntilEnd(codec)
+            }
+
+            videoCodec?.stop()
+            audioCodec?.stop()
+
+            if (muxerStarted) muxer?.stop()
+            muxer?.release()
+            outputFd?.close()
+
+            if (Build.VERSION.SDK_INT >= 29 && outputUri != null) {
+                context.contentResolver.update(
+                    outputUri!!,
+                    ContentValues().apply { put(MediaStore.Video.Media.IS_PENDING, 0) },
+                    null,
+                    null,
+                )
+            }
+        } catch (t: Throwable) {
+            outputUri?.let {
+                runCatching { context.contentResolver.delete(it, null, null) }
+            }
+            throw t
+        } finally {
+            videoCodec?.release()
+            audioCodec?.release()
+            videoCodec = null
+            audioCodec = null
+            muxer = null
+            outputFd = null
+        }
+
+        return outputUri
+    }
+
+    private fun drainUntilEnd(codec: MediaCodec?) {
+        if (codec == null) return
+        val info = MediaCodec.BufferInfo()
+        var eos = false
+        repeat(200) {
+            if (eos) return
+            when (val index = codec.dequeueOutputBuffer(info, 10_000)) {
+                MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> {
+                    if (codec === videoCodec) {
+                        if (videoTrack < 0) videoTrack = muxer!!.addTrack(codec.outputFormat)
+                    } else if (audioTrack < 0) {
+                        audioTrack = muxer!!.addTrack(codec.outputFormat)
+                    }
+                    startMuxerIfReady()
+                }
+                MediaCodec.INFO_TRY_AGAIN_LATER -> Unit
+                MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED -> Unit
+                else -> if (index >= 0) {
+                    val buffer = codec.getOutputBuffer(index)
+                    if (buffer != null && info.size > 0 && muxerStarted && info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                        buffer.position(info.offset)
+                        buffer.limit(info.offset + info.size)
+                        muxer!!.writeSampleData(if (codec === videoCodec) videoTrack else audioTrack, buffer, info)
+                    }
+                    eos = info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0
+                    codec.releaseOutputBuffer(index, false)
+                }
+            }
+        }
+    }
+
+    private fun cleanupFailedStart() {
+        runCatching { videoCodec?.release() }
+        runCatching { audioCodec?.release() }
+        runCatching { muxer?.release() }
+        runCatching { outputFd?.close() }
+        outputUri?.let { runCatching { context.contentResolver.delete(it, null, null) } }
+        videoCodec = null
+        audioCodec = null
+        muxer = null
+        outputFd = null
+        outputUri = null
+    }
 }
