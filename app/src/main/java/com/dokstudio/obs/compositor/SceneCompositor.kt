@@ -27,6 +27,10 @@ class SceneCompositor {
         internal var scaleY: Float = 1f,
         internal var translateX: Float = 0f,
         internal var translateY: Float = 0f,
+        internal var frameEnabled: Boolean = false,
+        internal var frameShape: Int = 1,
+        internal var cornerRadius: Float = 0.14f,
+        internal var borderWidth: Float = 0.018f,
     )
 
     private data class LayerState(
@@ -49,6 +53,11 @@ class SceneCompositor {
     private var alphaLocation = -1
     private var modelLocation = -1
     private var texMatrixLocation = -1
+    private var localLocation = -1
+    private var frameEnabledLocation = -1
+    private var frameShapeLocation = -1
+    private var cornerRadiusLocation = -1
+    private var borderWidthLocation = -1
     private val layers = mutableListOf<LayerState>()
     private val released = AtomicBoolean(false)
 
@@ -178,8 +187,15 @@ class SceneCompositor {
         alphaLocation = GLES20.glGetUniformLocation(program, "uAlpha")
         modelLocation = GLES20.glGetUniformLocation(program, "uModel")
         texMatrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
+        localLocation = GLES20.glGetAttribLocation(program, "aLocal")
+        frameEnabledLocation = GLES20.glGetUniformLocation(program, "uFrameEnabled")
+        frameShapeLocation = GLES20.glGetUniformLocation(program, "uFrameShape")
+        cornerRadiusLocation = GLES20.glGetUniformLocation(program, "uCornerRadius")
+        borderWidthLocation = GLES20.glGetUniformLocation(program, "uBorderWidth")
         check(positionLocation >= 0 && texCoordLocation >= 0 && textureLocation >= 0 &&
-            alphaLocation >= 0 && modelLocation >= 0 && texMatrixLocation >= 0) {
+            alphaLocation >= 0 && modelLocation >= 0 && texMatrixLocation >= 0 && localLocation >= 0 &&
+            frameEnabledLocation >= 0 && frameShapeLocation >= 0 &&
+            cornerRadiusLocation >= 0 && borderWidthLocation >= 0) {
             "Required GL locations are unavailable"
         }
         GLES20.glEnable(GLES20.GL_BLEND)
@@ -227,6 +243,9 @@ class SceneCompositor {
         vertices.position(2)
         GLES20.glEnableVertexAttribArray(texCoordLocation)
         GLES20.glVertexAttribPointer(texCoordLocation, 2, GLES20.GL_FLOAT, false, 16, vertices)
+        vertices.position(2)
+        GLES20.glEnableVertexAttribArray(localLocation)
+        GLES20.glVertexAttribPointer(localLocation, 2, GLES20.GL_FLOAT, false, 16, vertices)
 
         layers.sortedBy { it.source.z }.forEach { layer ->
             val model = FloatArray(16)
@@ -236,6 +255,10 @@ class SceneCompositor {
             GLES20.glUniformMatrix4fv(modelLocation, 1, false, model, 0)
             GLES20.glUniformMatrix4fv(texMatrixLocation, 1, false, layer.texMatrix, 0)
             GLES20.glUniform1f(alphaLocation, layer.source.alpha)
+            GLES20.glUniform1i(frameEnabledLocation, if (layer.source.frameEnabled) 1 else 0)
+            GLES20.glUniform1i(frameShapeLocation, layer.source.frameShape)
+            GLES20.glUniform1f(cornerRadiusLocation, layer.source.cornerRadius)
+            GLES20.glUniform1f(borderWidthLocation, layer.source.borderWidth)
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, layer.source.textureId)
             GLES20.glUniform1i(textureLocation, 0)
@@ -317,12 +340,15 @@ class SceneCompositor {
         private const val VERTEX_SHADER = """
             attribute vec4 aPosition;
             attribute vec2 aTexCoord;
+            attribute vec2 aLocal;
             uniform mat4 uModel;
             uniform mat4 uTexMatrix;
             varying vec2 vTexCoord;
+            varying vec2 vLocal;
             void main() {
                 gl_Position = uModel * aPosition;
                 vTexCoord = (uTexMatrix * vec4(aTexCoord, 0.0, 1.0)).xy;
+                vLocal = aLocal;
             }
         """
         private const val FRAGMENT_SHADER = """
@@ -330,10 +356,33 @@ class SceneCompositor {
             precision mediump float;
             uniform samplerExternalOES uTexture;
             uniform float uAlpha;
+            uniform int uFrameEnabled;
+            uniform int uFrameShape;
+            uniform float uCornerRadius;
+            uniform float uBorderWidth;
             varying vec2 vTexCoord;
+            varying vec2 vLocal;
+            float roundedDistance(vec2 p, float radius) {
+                vec2 q = abs(p - vec2(0.5)) - vec2(0.5 - radius);
+                return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - radius;
+            }
+            float shapeDistance() {
+                if (uFrameShape == 2) return distance(vLocal, vec2(0.5)) - 0.5;
+                if (uFrameShape == 1) return roundedDistance(vLocal, clamp(uCornerRadius, 0.0, 0.49));
+                return max(abs(vLocal.x - 0.5), abs(vLocal.y - 0.5)) - 0.5;
+            }
             void main() {
                 vec4 color = texture2D(uTexture, vTexCoord);
-                gl_FragColor = vec4(color.rgb, color.a * uAlpha);
+                float alpha = color.a * uAlpha;
+                if (uFrameEnabled == 1) {
+                    float d = shapeDistance();
+                    float edge = max(fwidth(d), 0.001);
+                    float inside = 1.0 - smoothstep(0.0, edge, d);
+                    float border = 1.0 - smoothstep(-uBorderWidth - edge, -uBorderWidth, d);
+                    color.rgb = mix(color.rgb, vec3(1.0), border * inside);
+                    alpha *= inside;
+                }
+                gl_FragColor = vec4(color.rgb, alpha);
             }
         """
     }
