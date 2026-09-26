@@ -46,7 +46,7 @@ class SceneCompositor {
     private var texCoordLocation = -1
     private var textureLocation = -1
     private var alphaLocation = -1
-    private var transformLocation = -1
+    private var modelLocation = -1\n    private var texMatrixLocation = -1
     private val layers = mutableListOf<LayerState>()
     private val released = AtomicBoolean(false)
 
@@ -193,7 +193,7 @@ class SceneCompositor {
         texCoordLocation = GLES20.glGetAttribLocation(program, "aTexCoord")
         textureLocation = GLES20.glGetUniformLocation(program, "uTexture")
         alphaLocation = GLES20.glGetUniformLocation(program, "uAlpha")
-        transformLocation = GLES20.glGetUniformLocation(program, "uTransform")
+        modelLocation = GLES20.glGetUniformLocation(program, "uModel")\n        texMatrixLocation = GLES20.glGetUniformLocation(program, "uTexMatrix")
 
         GLES20.glEnable(GLES20.GL_BLEND)
         GLES20.glBlendFunc(GLES20.GL_SRC_ALPHA, GLES20.GL_ONE_MINUS_SRC_ALPHA)
