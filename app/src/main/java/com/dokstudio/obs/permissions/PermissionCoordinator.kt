@@ -17,6 +17,9 @@ class PermissionCoordinator(private val activity: Activity) {
     fun missingCameraPermission(): Boolean =
         !isGranted(Manifest.permission.CAMERA)
 
+    fun cameraPermissionGranted(): Boolean =
+        isGranted(Manifest.permission.CAMERA)
+
     fun requestCapturePermissions() {
         val missing = missingCapturePermissions()
         if (missing.isNotEmpty()) {
