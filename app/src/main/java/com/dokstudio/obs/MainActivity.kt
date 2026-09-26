@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             if (audioGranted && notificationGranted) requestProjectionConsent()
         }
 
-    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled = false\n\n    private val projectionLauncher =
+    private val cameraPermissionLauncher =\n        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->\n            cameraEnabled = granted\n        }\n\n    private var cameraEnabled by mutableStateOf(false)\n\n    private val projectionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             if (result.resultCode == Activity.RESULT_OK && result.data != null) {
                 projectionResult = result.resultCode
