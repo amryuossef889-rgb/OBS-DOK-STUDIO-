@@ -7,7 +7,7 @@ android { namespace="com.dokstudio.obs"; compileSdk=36
  packaging { resources.excludes += "/META-INF/{AL2.0,LGPL2.1}" }
 }
 kotlin { jvmToolchain(17) }
-val composeBom=platform("androidx.compose:compose-bom:2026.09.00")
+val composeBom = dependencies.platform("androidx.compose:compose-bom:2026.09.00")
 dependencies {
  implementation(composeBom); androidTestImplementation(composeBom)
  implementation("androidx.core:core-ktx:1.17.0"); implementation("androidx.activity:activity-compose:1.13.0")
