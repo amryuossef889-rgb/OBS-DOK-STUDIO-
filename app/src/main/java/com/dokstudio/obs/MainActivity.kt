@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
         else capturePermissionLauncher.launch(missing.toTypedArray())
     }
 
-    fun beginRecording(needsCamera: Boolean, start: () -> Unit) {
+    fun beginRecording(needsScreen: Boolean, needsCamera: Boolean, start: () -> Unit) {
         pendingStart = start
         val missing = PermissionCoordinator(this).missingCapturePermissions().toMutableList()
         if (needsCamera && PermissionCoordinator(this).missingCameraPermission()) {
@@ -94,7 +94,13 @@ class MainActivity : ComponentActivity() {
         }
         if (missing.isNotEmpty()) { capturePermissionLauncher.launch(missing.distinct().toTypedArray()); return }
         if (needsCamera) cameraEnabled = true
-        requestProjectionConsent()
+        if (needsScreen) requestProjectionConsent() else {
+            projectionResult = null
+            projectionData = null
+            val action = pendingStart
+            pendingStart = null
+            action?.invoke()
+        }
     }
 
     private fun requestProjectionConsent() {
@@ -132,8 +138,9 @@ class MainActivity : ComponentActivity() {
     ) {
         val code = projectionResult
         val data = projectionData
-        if (code == null || data == null) {
-            onError("Screen Capture consent is required before recording.")
+        val hasScreenSource = vm.selectedSources.value.any { it.type.equals("SCREEN", true) && it.visible }
+        if (hasScreenSource && (code == null || data == null)) {
+            onError("Screen Capture consent is required for Display Capture.")
             return
         }
         if (!PermissionCoordinator(this).capturePermissionsGranted()) {
@@ -267,6 +274,7 @@ private fun StudioScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var showQualityDialog by remember { mutableStateOf(false) }
     var showCameraMenu by remember { mutableStateOf(false) }
+    var selectedSourceId by remember { mutableStateOf<String?>(null) }
     var cameraScale by remember { mutableFloatStateOf(0.32f) }
     var cameraX by remember { mutableFloatStateOf(0.62f) }
     var cameraY by remember { mutableFloatStateOf(-0.62f) }
@@ -285,6 +293,7 @@ private fun StudioScreen(
         )
     }
 
+    val selectedSource = sources.firstOrNull { it.id == selectedSourceId } ?: sources.firstOrNull()
     val isRecording = studio == StudioState.RECORDING
     val isBusy = studio != StudioState.IDLE
     val bg = Color(0xFF171A22)
@@ -388,10 +397,16 @@ private fun StudioScreen(
                 } else {
                     LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
                         items(sources) { source ->
-                            Row(Modifier.fillMaxWidth().height(38.dp).padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically) {
-                                Text(if (source.type == "CAMERA") "◉" else "▣", color = Color(0xFFCFD3DD), modifier = Modifier.width(25.dp))
-                                Text(source.name, color = textPrimary)
+                            Surface(
+                                Modifier.fillMaxWidth().height(38.dp).clickable(enabled = !isBusy) { selectedSourceId = source.id },
+                                color = if (selectedSourceId == source.id) selectedBlue else Color.Transparent,
+                            ) {
+                                Row(Modifier.fillMaxSize().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (source.type == "CAMERA") "◉" else if (source.type == "MICROPHONE") "M" else "▣", color = Color(0xFFCFD3DD), modifier = Modifier.width(28.dp))
+                                    Text(source.name, color = textPrimary, modifier = Modifier.weight(1f))
+                                    Text(if (source.visible) "◉" else "○", color = Color(0xFFBFC3CD),
+                                        modifier = Modifier.clickable { vm.toggleSource(source) }.padding(horizontal = 6.dp))
+                                }
                             }
                         }
                     }
@@ -436,6 +451,22 @@ private fun StudioScreen(
                     Text("⚙", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 10.dp))
                     Text("▲", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
                     Text("▼", color = Color(0xFFBFC3CD), modifier = Modifier.padding(horizontal = 7.dp))
+                    Text("−", color = Color(0xFFBFC3CD), modifier = Modifier
+                        .clickable(enabled = !isBusy && selectedSource != null) { selectedSource?.let { vm.removeSource(it); selectedSourceId = null } }
+                        .padding(horizontal = 9.dp))
+                }
+                if (selectedSource != null && selectedSource.type != "MICROPHONE") {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+                        Text("Transform: " + selectedSource.name, color = Color(0xFFDDE0E7), style = MaterialTheme.typography.labelSmall)
+                        Text("X  " + "%.2f".format(selectedSource.x), color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Slider(value = selectedSource.x.coerceIn(-1f, 1f), onValueChange = { vm.setSourceTransform(selectedSource, it, selectedSource.y, selectedSource.width, selectedSource.height) }, valueRange = -1f..1f, enabled = !isBusy)
+                        Text("Y  " + "%.2f".format(selectedSource.y), color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Slider(value = selectedSource.y.coerceIn(-1f, 1f), onValueChange = { vm.setSourceTransform(selectedSource, selectedSource.x, it, selectedSource.width, selectedSource.height) }, valueRange = -1f..1f, enabled = !isBusy)
+                        Text("Width  " + "%.2f".format(selectedSource.width), color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Slider(value = selectedSource.width.coerceIn(0.05f, 1.5f), onValueChange = { vm.setSourceTransform(selectedSource, selectedSource.x, selectedSource.y, it, selectedSource.height) }, valueRange = 0.05f..1.5f, enabled = !isBusy)
+                        Text("Height  " + "%.2f".format(selectedSource.height), color = textSecondary, style = MaterialTheme.typography.labelSmall)
+                        Slider(value = selectedSource.height.coerceIn(0.05f, 1.5f), onValueChange = { vm.setSourceTransform(selectedSource, selectedSource.x, selectedSource.y, selectedSource.width, it) }, valueRange = 0.05f..1.5f, enabled = !isBusy)
+                    }
                 }
             }
 
@@ -483,7 +514,8 @@ private fun StudioScreen(
                     Button(enabled = !isBusy, onClick = {
                         error = null
                         val sceneNeedsCamera = sources.any { it.type.equals("CAMERA", true) && it.visible }
-                        activity.beginRecording(sceneNeedsCamera) {
+                        val sceneNeedsScreen = sources.any { it.type.equals("SCREEN", true) && it.visible }
+                        activity.beginRecording(sceneNeedsScreen, sceneNeedsCamera) {
                             activity.startRecording(vm, selectedProfile, frameShape, cameraScale, cameraX, cameraY, cornerRadius, borderWidth) { error = it }
                         }
                     }, modifier = Modifier.fillMaxWidth().height(42.dp),
